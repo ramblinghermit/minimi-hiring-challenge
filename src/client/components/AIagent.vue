@@ -1,27 +1,27 @@
 <template>
-  <div class="chat-container flex flex-col h-full w-full relative">
+  <div class="chat-container flex flex-col h-full w-full relative bg-black text-neutral-100">
     
     <!-- Top Header Bar -->
-    <header class="h-14 border-b border-neutral-800/80 bg-neutral-950/80 backdrop-blur px-6 flex items-center justify-between z-20 flex-shrink-0">
+    <header class="h-14 border-b border-neutral-800 bg-neutral-950/90 backdrop-blur px-6 flex items-center justify-between z-20 flex-shrink-0">
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white text-xs shadow-sm">
           M
         </div>
         <div>
           <div class="flex items-center gap-2">
-            <h1 class="text-sm font-bold text-neutral-100 tracking-tight">minimi</h1>
-            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-medium">Search Agent</span>
+            <h1 class="text-sm font-semibold text-white tracking-tight">minimi</h1>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-neutral-800 text-neutral-300 border border-neutral-700 font-mono">search-agent</span>
           </div>
-          <p class="text-[10px] text-neutral-400">Ambient Brain-Vault Memory × AgentBridge Governance</p>
+          <p class="text-[11px] text-neutral-400">Ambient Memory & Tool Governance</p>
         </div>
       </div>
 
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2.5">
         <!-- Model Selector -->
         <select 
           v-model="selectedModel" 
           :disabled="isProcessing"
-          class="bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500 transition-colors"
+          class="bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-neutral-600 transition-colors cursor-pointer"
         >
           <option value="gpt-4o-mini">OpenAI: GPT-4o Mini</option>
           <option value="gpt-4o">OpenAI: GPT-4o</option>
@@ -34,10 +34,10 @@
         <!-- Benchmark Drawer Toggle -->
         <button 
           @click="showBenchmark = !showBenchmark"
-          class="text-xs px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 font-medium"
-          :class="showBenchmark ? 'bg-sky-600 border-sky-500 text-white' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'"
+          class="text-xs px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 font-medium shadow-sm"
+          :class="showBenchmark ? 'bg-blue-600 border-blue-500 text-white' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white'"
         >
-          <span>🧪 Benchmark Suite</span>
+          <span>Benchmark Suite</span>
         </button>
       </div>
     </header>
@@ -46,39 +46,42 @@
     <div class="flex-1 flex overflow-hidden relative">
       
       <!-- Messages List -->
-      <main class="flex-1 flex flex-col justify-between overflow-hidden relative">
+      <main class="flex-1 flex flex-col justify-between overflow-hidden relative bg-black">
         <div 
           ref="chatList" 
           class="flex-1 overflow-y-auto px-4 md:px-8 py-6 space-y-6 styled-scrollbar"
         >
           <!-- Centered Landing View if No Messages -->
           <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center max-w-xl mx-auto text-center px-4">
-            <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-500/20 to-purple-500/20 border border-sky-500/30 flex items-center justify-center text-2xl shadow-inner mb-4">
-              ✨
+            <div class="w-10 h-10 rounded-lg bg-neutral-900 border border-neutral-800 flex items-center justify-center text-blue-400 shadow-sm mb-3">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
             </div>
-            <h2 class="text-xl font-bold text-neutral-100 mb-1">State-of-the-Art Web Search Chat Agent</h2>
-            <p class="text-xs text-neutral-400 mb-6">
-              Equipped with <span class="text-purple-400 font-medium">Brain-Vault Episodic Memory</span> for temporal recall & <span class="text-sky-400 font-medium">AgentBridge Governance</span> for tool execution permissions.
+            <h2 class="text-base font-semibold text-white mb-1">Minimi Web Search Chat Agent</h2>
+            <p class="text-xs text-neutral-400 mb-6 max-w-md">
+              Persistent temporal recall with Brain-Vault memory and in-stream tool governance.
             </p>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left">
               <button 
                 v-for="(sample, idx) in quickSamples" 
                 :key="idx"
                 @click="sendQuick(sample.prompt)"
-                class="p-3 rounded-xl border border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800/80 hover:border-neutral-700 text-xs text-neutral-300 transition-all text-left group"
+                class="p-3 rounded-lg border border-neutral-800 bg-neutral-950 hover:bg-neutral-900 hover:border-neutral-700 text-xs text-neutral-300 transition-all text-left group shadow-sm"
               >
-                <div class="font-medium text-neutral-200 group-hover:text-sky-400 mb-1 flex items-center justify-between">
+                <div class="font-medium text-white group-hover:text-blue-400 mb-1 flex items-center justify-between">
                   <span>{{ sample.title }}</span>
                   <span class="text-neutral-500 group-hover:text-neutral-300">↗</span>
                 </div>
-                <p class="text-[11px] text-neutral-500 line-clamp-2">{{ sample.prompt }}</p>
+                <p class="text-[11px] text-neutral-400 line-clamp-2">{{ sample.prompt }}</p>
               </button>
             </div>
           </div>
 
           <!-- Messages Stream -->
-          <div v-else class="max-w-3xl mx-auto space-y-6 w-full pb-8">
+          <div v-else class="max-w-3xl mx-auto space-y-5 w-full pb-8">
             <div 
               v-for="(msg, index) in messages" 
               :key="index" 
@@ -86,8 +89,8 @@
               :class="msg.role === 'user' ? 'items-end' : 'items-start'"
             >
               <!-- Role label & timestamp -->
-              <div class="flex items-center gap-2 mb-1.5 px-1 text-[11px] text-neutral-500">
-                <span class="font-semibold uppercase tracking-wider" :class="msg.role === 'user' ? 'text-sky-400' : 'text-purple-400'">
+              <div class="flex items-center gap-2 mb-1.5 px-1 text-[11px] text-neutral-500 font-mono">
+                <span class="font-semibold uppercase tracking-wider" :class="msg.role === 'user' ? 'text-blue-400' : 'text-neutral-300'">
                   {{ msg.role === 'user' ? 'You' : 'Minimi' }}
                 </span>
                 <span>•</span>
@@ -109,7 +112,7 @@
               <!-- Standard Message Bubble -->
               <div v-else class="w-full flex flex-col" :class="msg.role === 'user' ? 'items-end' : 'items-start'">
                 
-                <!-- Agent Thoughts / Scratchpad (AgentBridge Accordion) -->
+                <!-- Agent Thoughts / Scratchpad (Accordion) -->
                 <div v-if="msg.role === 'assistant' && msg.scratchpad && msg.scratchpad.length > 0" class="w-full">
                   <Scratchpad 
                     :scratchpad="msg.scratchpad" 
@@ -120,20 +123,20 @@
 
                 <!-- Message Bubble Text -->
                 <div 
-                  class="message-bubble rounded-2xl px-4 py-3 text-sm leading-relaxed max-w-full"
-                  :class="msg.role === 'user' ? 'bg-sky-600 text-white rounded-tr-sm ml-12' : 'bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-tl-sm w-full'"
+                  class="message-bubble rounded-xl px-4 py-3 text-sm leading-relaxed max-w-full shadow-sm"
+                  :class="msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none ml-12' : 'bg-neutral-900 border border-neutral-800 text-neutral-100 rounded-tl-none w-full'"
                 >
                   <div 
                     v-if="msg.role === 'assistant' && msg.text" 
-                    class="markdown-body prose prose-invert prose-sm max-w-none"
+                    class="markdown-body prose prose-invert prose-sm max-w-none text-neutral-100"
                     v-html="renderMarkdown(msg.text)"
                   ></div>
 
                   <!-- Typing indicator -->
                   <div v-else-if="isProcessing && index === currentAgentMessageIndex && !msg.text" class="flex items-center gap-1.5 py-1">
-                    <span class="w-2 h-2 rounded-full bg-sky-400 animate-bounce"></span>
-                    <span class="w-2 h-2 rounded-full bg-sky-400 animate-bounce [animation-delay:0.2s]"></span>
-                    <span class="w-2 h-2 rounded-full bg-sky-400 animate-bounce [animation-delay:0.4s]"></span>
+                    <span class="w-2 h-2 rounded-full bg-blue-500 animate-bounce"></span>
+                    <span class="w-2 h-2 rounded-full bg-blue-500 animate-bounce [animation-delay:0.2s]"></span>
+                    <span class="w-2 h-2 rounded-full bg-blue-500 animate-bounce [animation-delay:0.4s]"></span>
                   </div>
 
                   <div v-else>{{ msg.text }}</div>
@@ -145,7 +148,7 @@
                 </div>
 
                 <!-- Actions (Copy, etc.) -->
-                <div v-if="msg.text" class="flex items-center gap-2 mt-1.5 px-1 text-[11px] text-neutral-500">
+                <div v-if="msg.text" class="flex items-center gap-2 mt-1 px-1 text-[11px] text-neutral-500">
                   <button @click="copyText(msg.text, index)" class="hover:text-neutral-300 transition-colors">
                     {{ copiedIndex === index ? '✓ Copied' : 'Copy' }}
                   </button>
@@ -156,24 +159,24 @@
           </div>
         </div>
 
-        <!-- Input Area (AgentBridge Bottom Bar) -->
-        <div class="p-4 border-t border-neutral-800/80 bg-neutral-950/80 backdrop-blur z-10 flex-shrink-0">
-          <div class="max-w-3xl mx-auto relative bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl focus-within:border-sky-500/60 transition-colors p-2.5">
+        <!-- Input Area (Bottom Bar) -->
+        <div class="p-4 border-t border-neutral-800 bg-neutral-950 z-10 flex-shrink-0">
+          <div class="max-w-3xl mx-auto relative bg-neutral-900 border border-neutral-800 rounded-xl shadow-md focus-within:border-neutral-600 transition-colors p-2.5">
             <textarea 
               v-model="inputPrompt" 
               @keydown.ctrl.enter.prevent="sendMessage"
               @keydown.exact.enter.prevent="handleEnter"
-              placeholder="Ask Minimi anything (searches live web with Brain-Vault memory)... [Enter or Ctrl+Enter to send]"
-              class="w-full bg-transparent text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none resize-none px-2 py-1 max-h-32 min-h-[48px]"
+              placeholder="Ask Minimi anything (searches live web with Brain-Vault memory)... [Enter to send]"
+              class="w-full bg-transparent text-sm text-white placeholder-neutral-500 focus:outline-none resize-none px-2 py-1 max-h-32 min-h-[44px]"
               rows="2"
               :disabled="isProcessing"
             ></textarea>
 
-            <div class="flex items-center justify-between pt-2 px-1 border-t border-neutral-800/40">
-              <div class="flex items-center gap-2 text-xs text-neutral-500">
-                <span class="flex items-center gap-1">
-                  <span class="w-1.5 h-1.5 rounded-full" :class="autoPilot ? 'bg-emerald-400' : 'bg-amber-400'"></span>
-                  {{ autoPilot ? 'Auto-Pilot Mode' : 'Supervised Mode' }}
+            <div class="flex items-center justify-between pt-2 px-1 border-t border-neutral-800">
+              <div class="flex items-center gap-2 text-xs text-neutral-400">
+                <span class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full" :class="autoPilot ? 'bg-blue-500' : 'bg-neutral-400'"></span>
+                  <span>{{ autoPilot ? 'Auto-Pilot Mode' : 'Supervised Mode' }}</span>
                 </span>
               </div>
 
@@ -181,9 +184,9 @@
                 <button 
                   @click="sendMessage" 
                   :disabled="!inputPrompt.trim() || isProcessing"
-                  class="px-4 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:hover:bg-sky-600 text-white text-xs font-semibold shadow-md transition-all flex items-center gap-1.5"
+                  class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600 text-white text-xs font-medium shadow-sm transition-all flex items-center gap-1.5"
                 >
-                  <span>{{ isProcessing ? 'Thinking...' : 'Send' }}</span>
+                  <span>{{ isProcessing ? 'Searching...' : 'Send' }}</span>
                   <span class="text-[10px] opacity-75">↵</span>
                 </button>
               </div>
@@ -251,8 +254,8 @@ const quickSamples = [
     prompt: 'Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?'
   },
   {
-    title: 'Live Web Search',
-    prompt: 'What are the biggest developer features shipped in Next.js 16?'
+    title: 'Vector Databases (2 Weeks Ago)',
+    prompt: 'Two weeks ago we compared vector databases for our RAG agent. Has Pinecone or Qdrant announced any new serverless pricing or hybrid search updates since?'
   }
 ];
 
@@ -405,7 +408,6 @@ const handleToolApproval = async (data, index) => {
         tool_name: data.toolName
       })
     });
-    // Remove permission card once handled
     messages.value.splice(index, 1);
   } catch (err) {
     console.error('Approval failed:', err);
@@ -423,7 +425,6 @@ const handleToolDenial = async (data, index) => {
         tool_name: data.toolName
       })
     });
-    // Remove permission card once handled
     messages.value.splice(index, 1);
   } catch (err) {
     console.error('Denial failed:', err);
