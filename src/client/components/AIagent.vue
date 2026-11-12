@@ -27,7 +27,7 @@
           <option value="gpt-4o">OpenAI: GPT-4o</option>
           <option value="claude-3-5-haiku-latest">Anthropic: Claude 3.5 Haiku</option>
           <option value="claude-3-5-sonnet-latest">Anthropic: Claude 3.5 Sonnet</option>
-          <option value="gemini-2.0-flash">Google: Gemini 2.0 Flash</option>
+          <option value="gemini-2.5-flash">Google: Gemini 2.5 Flash</option>
           <option value="llama-3.3-70b-versatile">Groq: Llama 3.3 70B</option>
         </select>
 
@@ -212,7 +212,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
 import MarkdownIt from 'markdown-it';
 import ToolPermissionMessage from './ToolPermissionMessage.vue';
 import Scratchpad from './Scratchpad.vue';
@@ -233,12 +233,24 @@ const inputPrompt = ref('');
 const isProcessing = ref(false);
 const showBenchmark = ref(true);
 const autoPilot = ref(true);
-const selectedModel = ref('gpt-4o-mini');
+const selectedModel = ref('gemini-3.8-flash');
 const messages = ref([]);
 const currentAgentMessageIndex = ref(-1);
 const copiedIndex = ref(null);
 const chatList = ref(null);
 let eventSource = null;
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/models');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.active?.model && data.active.provider !== 'fallback') {
+        selectedModel.value = data.active.model;
+      }
+    }
+  } catch {}
+});
 
 const quickSamples = [
   {

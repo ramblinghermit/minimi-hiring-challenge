@@ -26,7 +26,7 @@ export class LLMClient {
       return { provider: 'anthropic', model: process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest' };
     }
     if (process.env.GEMINI_API_KEY) {
-      return { provider: 'gemini', model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' };
+      return { provider: 'gemini', model: process.env.GEMINI_MODEL || 'gemini-3.8-flash' };
     }
     if (process.env.GROQ_API_KEY) {
       return { provider: 'groq', model: 'llama-3.3-70b-versatile' };
@@ -42,8 +42,19 @@ export class LLMClient {
     options: LLMStreamOptions
   ): Promise<string> {
     const config = this.getAvailableProvider();
-    const provider = options.provider || config.provider;
-    const model = options.model || config.model;
+    let provider = options.provider;
+    let model = options.model;
+
+    // Automatically infer provider from model name if not explicitly set
+    if (!provider && model) {
+      if (model.startsWith('gpt-')) provider = 'openai';
+      else if (model.startsWith('claude-')) provider = 'anthropic';
+      else if (model.startsWith('gemini-')) provider = 'gemini';
+      else if (model.startsWith('llama-')) provider = 'groq';
+    }
+
+    provider = provider || config.provider;
+    model = model || config.model;
 
     if (provider === 'openai' && process.env.OPENAI_API_KEY) {
       return await this.streamOpenAI(messages, model, process.env.OPENAI_API_KEY, options.onToken);
@@ -232,8 +243,9 @@ export class LLMClient {
         parts: [{ text: m.content }],
       }));
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
-    const res = await fetch(url, {
+    const targetModel = model || 'gemini-2.5-flash';
+    let url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${apiKey}`;
+    let res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -241,6 +253,20 @@ export class LLMClient {
         contents,
       }),
     });
+
+    // Auto-failover to stable gemini-2.5-flash if preview model encounters 503 or 404
+    if (!res.ok && targetModel !== 'gemini-2.5-flash') {
+      console.warn(`[LLMClient] Gemini model ${targetModel} returned ${res.status}, failing over to gemini-2.5-flash...`);
+      url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents,
+        }),
+      });
+    }
 
     if (!res.ok) {
       const err = await res.text();

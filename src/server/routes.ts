@@ -123,7 +123,7 @@ apiRouter.get('/models', (_req: Request, res: Response) => {
       { id: 'gpt-4o', provider: 'openai', name: 'GPT-4o (Reasoning)' },
       { id: 'claude-3-5-haiku-latest', provider: 'anthropic', name: 'Claude 3.5 Haiku' },
       { id: 'claude-3-5-sonnet-latest', provider: 'anthropic', name: 'Claude 3.5 Sonnet' },
-      { id: 'gemini-2.0-flash', provider: 'gemini', name: 'Gemini 2.0 Flash' },
+      { id: 'gemini-2.5-flash', provider: 'gemini', name: 'Gemini 2.5 Flash' },
       { id: 'llama-3.3-70b-versatile', provider: 'groq', name: 'Groq Llama 3.3 70B' },
     ],
   });
