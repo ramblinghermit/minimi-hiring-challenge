@@ -66,6 +66,38 @@
           <span class="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">Supabase/Neon Diff</span>
         </div>
       </div>
+
+      <!-- Scenario 4: Vector DBs (2 Weeks Ago) -->
+      <div 
+        @click="selectScenario(scenarios[3])" 
+        class="p-2.5 rounded-xl border border-neutral-800/80 bg-neutral-950/40 hover:bg-neutral-800/50 hover:border-amber-500/40 cursor-pointer transition-all group"
+      >
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-amber-400">Scenario 4: Multi-Week Vector DB Evaluation</span>
+          <span class="text-[10px] text-neutral-500 group-hover:text-neutral-300">Click to Run ↗</span>
+        </div>
+        <p class="text-[12px] text-neutral-300 mt-1 line-clamp-2">"Two weeks ago we compared vector databases for our RAG agent. Has Pinecone or Qdrant announced any new serverless pricing or hybrid search updates since?"</p>
+        <div class="mt-1.5 flex gap-1.5 text-[10px] text-neutral-500">
+          <span class="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">Anchor: 2 Weeks Ago</span>
+          <span class="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">Pinecone/Qdrant Diff</span>
+        </div>
+      </div>
+
+      <!-- Scenario 5: Full-Stack ORM & Tailwind (3 Days Ago) -->
+      <div 
+        @click="selectScenario(scenarios[4])" 
+        class="p-2.5 rounded-xl border border-neutral-800/80 bg-neutral-950/40 hover:bg-neutral-800/50 hover:border-cyan-500/40 cursor-pointer transition-all group"
+      >
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-cyan-400">Scenario 5: Frameworks & Stable Versions</span>
+          <span class="text-[10px] text-neutral-500 group-hover:text-neutral-300">Click to Run ↗</span>
+        </div>
+        <p class="text-[12px] text-neutral-300 mt-1 line-clamp-2">"Three days ago I asked you about Drizzle ORM and Prisma. Have there been any new version releases or breaking changes since?"</p>
+        <div class="mt-1.5 flex gap-1.5 text-[10px] text-neutral-500">
+          <span class="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">Anchor: 3 Days Ago</span>
+          <span class="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">Release Changelogs</span>
+        </div>
+      </div>
     </div>
 
     <!-- Governance Setting -->
@@ -102,7 +134,9 @@ const isResetting = ref(false);
 const scenarios = [
   'On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?',
   'What did I ask you on 3 November? Is your answer still correct today?',
-  'Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?'
+  'Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?',
+  'Two weeks ago we compared vector databases for our RAG agent. Has Pinecone or Qdrant announced any new serverless pricing or hybrid search updates since?',
+  'Three days ago I asked you about Drizzle ORM and Prisma. Have there been any new version releases or breaking changes since?'
 ];
 
 const selectScenario = (prompt) => {

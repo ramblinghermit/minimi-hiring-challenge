@@ -65,21 +65,49 @@ export class BrainVaultEngine {
     if (view === 'episodic' || (view === 'auto' && temporalAnchor)) {
       if (temporalAnchor) {
         episodicMemories = await this.episodic.getByTemporalRange(temporalAnchor);
+        
+        // If exact range yielded 0, try a slightly relaxed +/- 24h window
+        if (episodicMemories.length === 0) {
+          const startMs = new Date(temporalAnchor.startDate).getTime() - 86400000;
+          const endMs = new Date(temporalAnchor.endDate).getTime() + 86400000;
+          episodicMemories = await this.episodic.getByTemporalRange({
+            startDate: new Date(startMs).toISOString(),
+            endDate: new Date(endMs).toISOString(),
+            label: temporalAnchor.label,
+            anchorType: temporalAnchor.anchorType,
+          });
+        }
       }
       
-      // If temporal range didn't find entries or user asks about specific topics (e.g., CRM, Postgres)
+      // Dynamic Salient Keyword Search Fallback:
+      // If temporal range didn't find entries or to supplement anchor retrieval,
+      // extract content words (excluding stopwords) and query episodic store
       if (episodicMemories.length === 0) {
-        if (/crm/i.test(prompt)) {
-          episodicMemories = await this.episodic.searchByKeyword('CRM', 4);
-        } else if (/postgres/i.test(prompt) || /database/i.test(prompt)) {
-          episodicMemories = await this.episodic.searchByKeyword('Postgres', 4);
-        } else if (/3 november|november 3|haiku/i.test(prompt)) {
-          episodicMemories = await this.episodic.searchByKeyword('Haiku', 4);
+        const stopwords = new Set([
+          'what', 'which', 'where', 'when', 'who', 'how', 'why', 'did', 'does', 'have', 'has',
+          'asked', 'about', 'tell', 'show', 'pricing', 'changed', 'since', 'then', 'today',
+          'there', 'their', 'they', 'with', 'from', 'that', 'this', 'last', 'week', 'days'
+        ]);
+
+        const words = prompt
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .split(/\s+/)
+          .filter((w) => w.length >= 3 && !stopwords.has(w));
+
+        for (const w of words) {
+          const found = await this.episodic.searchByKeyword(w, 3);
+          for (const mem of found) {
+            if (!episodicMemories.some((m) => m.id === mem.id)) {
+              episodicMemories.push(mem);
+            }
+          }
+          if (episodicMemories.length >= 5) break;
         }
       }
 
-      // If we found episodic memories, extract any entity profiles mentioned inside them
-      if (episodicMemories.length > 0 && matchedProfiles.length === 0) {
+      // If we found episodic memories, dynamically inject entity profiles mentioned inside them
+      if (episodicMemories.length > 0) {
         for (const mem of episodicMemories) {
           if (mem.metadata?.entities) {
             for (const entName of mem.metadata.entities) {

@@ -220,4 +220,129 @@ export async function seedBenchmarkScenarios(
       sourceSessionId: 'session_postgres_last_tue',
     });
   }
+
+  // ====================================================
+  // Scenario 4: Vector Databases (Two Weeks Ago)
+  // ====================================================
+  const twoWeeksAgoDate = new Date(referenceDate);
+  twoWeeksAgoDate.setDate(referenceDate.getDate() - 14);
+  twoWeeksAgoDate.setHours(11, 0, 0, 0);
+  const twoWeeksAgoIso = twoWeeksAgoDate.toISOString();
+
+  const vectorUserQuery = 'We are choosing a vector database for our RAG agent between Pinecone, Qdrant, Milvus, and Weaviate. What are their current serverless pricing tiers?';
+  const vectorAssistantAnswer = `Here is our evaluation of serverless vector databases:
+1. **Pinecone**: Serverless tier charges $0.05/hour base plus $0.33 per GB/month for storage and $8.25 per million write units.
+2. **Qdrant**: Managed cloud starts at $25/month for dedicated clusters with free 1GB cluster.
+3. **Milvus (Zilliz Cloud)**: Serverless starts at $65/month base.
+4. **Weaviate**: Serverless cloud starts at $25/month with 500k vector units.`;
+
+  await episodicStore.addEntry({
+    userId: 'default_user',
+    sessionId: 'session_vector_two_weeks',
+    role: 'user',
+    content: vectorUserQuery,
+    createdAt: twoWeeksAgoIso,
+  });
+
+  await episodicStore.addEntry({
+    userId: 'default_user',
+    sessionId: 'session_vector_two_weeks',
+    role: 'assistant',
+    content: vectorAssistantAnswer,
+    createdAt: new Date(twoWeeksAgoDate.getTime() + 1000 * 35).toISOString(),
+    metadata: {
+      entities: ['Pinecone', 'Qdrant', 'Milvus', 'Weaviate'],
+      topics: ['vector database', 'rag', 'serverless pricing'],
+    },
+  });
+
+  const vectorProviders = [
+    { name: 'Pinecone', pricing: '$0.05/hr + $0.33/GB-mo storage' },
+    { name: 'Qdrant', pricing: '$25/cluster/mo base' },
+    { name: 'Milvus', pricing: '$65/mo base on Zilliz' },
+    { name: 'Weaviate', pricing: '$25/mo standard serverless' },
+  ];
+
+  for (const v of vectorProviders) {
+    await entityStore.upsertProfile({
+      userId: 'default_user',
+      entityName: v.name,
+      category: 'database',
+      profileData: {
+        baselinePricing: v.pricing,
+        evaluatedOn: twoWeeksAgoIso,
+      },
+    });
+
+    await factStore.addFact({
+      userId: 'default_user',
+      subject: v.name,
+      predicate: 'vector_db_serverless_pricing',
+      object: v.pricing,
+      confidence: 1.0,
+      validFrom: twoWeeksAgoIso,
+      sourceSessionId: 'session_vector_two_weeks',
+    });
+  }
+
+  // ====================================================
+  // Scenario 5: Full-Stack ORM & Tailwind (3 Days Ago)
+  // ====================================================
+  const threeDaysAgoDate = new Date(referenceDate);
+  threeDaysAgoDate.setDate(referenceDate.getDate() - 3);
+  threeDaysAgoDate.setHours(15, 20, 0, 0);
+  const threeDaysAgoIso = threeDaysAgoDate.toISOString();
+
+  const ormUserQuery = 'What are the trade-offs between Prisma and Drizzle ORM for serverless Node apps, and what versions are stable?';
+  const ormAssistantAnswer = `For serverless TypeScript applications:
+- **Drizzle ORM**: Near-zero overhead, generates prepared SQL, perfect for cold starts. Current stable version is v0.36.
+- **Prisma ORM**: Rich schema migration tool, but has larger Rust engine binaries leading to 150-300ms cold starts on AWS Lambda. Stable version is v5.22.`;
+
+  await episodicStore.addEntry({
+    userId: 'default_user',
+    sessionId: 'session_orm_3days',
+    role: 'user',
+    content: ormUserQuery,
+    createdAt: threeDaysAgoIso,
+  });
+
+  await episodicStore.addEntry({
+    userId: 'default_user',
+    sessionId: 'session_orm_3days',
+    role: 'assistant',
+    content: ormAssistantAnswer,
+    createdAt: new Date(threeDaysAgoDate.getTime() + 1000 * 20).toISOString(),
+    metadata: {
+      entities: ['Drizzle ORM', 'Prisma ORM'],
+      topics: ['typescript orm', 'serverless cold starts', 'drizzle vs prisma'],
+    },
+  });
+
+  const ormEntities = [
+    { name: 'Drizzle ORM', version: 'v0.36', coldStart: 'near-zero ms' },
+    { name: 'Prisma ORM', version: 'v5.22', coldStart: '150-300ms' },
+  ];
+
+  for (const orm of ormEntities) {
+    await entityStore.upsertProfile({
+      userId: 'default_user',
+      entityName: orm.name,
+      category: 'tool',
+      profileData: {
+        stableVersion: orm.version,
+        coldStartPerf: orm.coldStart,
+        evaluatedOn: threeDaysAgoIso,
+      },
+    });
+
+    await factStore.addFact({
+      userId: 'default_user',
+      subject: orm.name,
+      predicate: 'stable_release_version',
+      object: orm.version,
+      confidence: 1.0,
+      validFrom: threeDaysAgoIso,
+      sourceSessionId: 'session_orm_3days',
+    });
+  }
 }
