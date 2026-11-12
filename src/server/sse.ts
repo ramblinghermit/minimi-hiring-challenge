@@ -3,6 +3,7 @@ import { StreamEventType } from '../core/types';
 
 export class SSEWriter {
   private res: Response;
+  private closed = false;
 
   constructor(res: Response) {
     this.res = res;
@@ -14,12 +15,23 @@ export class SSEWriter {
   }
 
   public send(event: StreamEventType, data: any): void {
-    const payload = typeof data === 'string' ? data : JSON.stringify(data);
-    this.res.write(`event: ${event}\n`);
-    this.res.write(`data: ${payload}\n\n`);
+    if (this.closed) return;
+    try {
+      const payload = typeof data === 'string' ? data : JSON.stringify(data);
+      this.res.write(`event: ${event}\n`);
+      this.res.write(`data: ${payload}\n\n`);
+    } catch {
+      this.closed = true;
+    }
   }
 
   public close(): void {
-    this.res.end();
+    if (this.closed) return;
+    this.closed = true;
+    try {
+      this.res.end();
+    } catch {
+      // already closed
+    }
   }
 }

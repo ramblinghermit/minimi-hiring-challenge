@@ -29,7 +29,7 @@ apiRouter.get('/chat/stream', async (req: Request, res: Response) => {
 
   // Handle client disconnect
   req.on('close', () => {
-    // Client closed stream
+    sse.close();
   });
 
   await AgentOrchestrator.execute(prompt, {
@@ -39,7 +39,7 @@ apiRouter.get('/chat/stream', async (req: Request, res: Response) => {
     autoPilot,
     referenceDate,
     onScratchpad: (event) => sse.send('scratchpad', event),
-    onApprovalRequired: (req) => sse.send('tool_approval_required', req),
+    onApprovalRequired: (data) => sse.send('tool_approval_required', data),
     onToolApproved: (data) => sse.send('tool_approved', data),
     onToken: (content) => sse.send('llm_token', { content }),
     onCitations: (citations) => sse.send('citations', { citations }),
