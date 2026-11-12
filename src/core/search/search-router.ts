@@ -11,12 +11,12 @@ import { SearchOptions, SearchResponse, SearchResultItem, SourceCitation } from 
  * 3. Zero-Key Fallback (DuckDuckGo scraper - ensures agent never fails)
  */
 export class SearchRouter {
-  private braveKey?: string;
-  private tavilyKey?: string;
+  private get braveKey(): string | undefined {
+    return process.env.BRAVE_SEARCH_API_KEY;
+  }
 
-  constructor() {
-    this.braveKey = process.env.BRAVE_SEARCH_API_KEY;
-    this.tavilyKey = process.env.TAVILY_API_KEY;
+  private get tavilyKey(): string | undefined {
+    return process.env.TAVILY_API_KEY;
   }
 
   public getActiveProvider(): 'brave' | 'tavily' | 'fallback' {
