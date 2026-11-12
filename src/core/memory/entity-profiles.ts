@@ -31,9 +31,7 @@ export class EntityProfileStore {
   private async persist(): Promise<void> {
     const dir = path.dirname(this.filePath);
     await fs.mkdir(dir, { recursive: true });
-    const tempPath = `${this.filePath}.tmp.${Date.now()}`;
-    await fs.writeFile(tempPath, JSON.stringify(this.profiles, null, 2), 'utf-8');
-    await fs.rename(tempPath, this.filePath);
+    await fs.writeFile(this.filePath, JSON.stringify(this.profiles, null, 2), 'utf-8');
   }
 
   public async upsertProfile(profile: Omit<EntityProfile, 'id' | 'lastObservedAt'>): Promise<EntityProfile> {

@@ -97,34 +97,27 @@ export class AgentOrchestrator {
           tool_input: toolPayload,
         });
 
-        // If not in autoPilot mode, trigger permission dialog
-        const approvalPromise = PermissionGate.requestApproval(
+        // If not in autoPilot mode, register approval callback to bridge to SSE
+        if (!options.autoPilot) {
+          PermissionGate.setApprovalCallback((req) => {
+            options.onApprovalRequired({
+              approvalId: req.approvalId,
+              toolName: req.toolName,
+              serverName: req.serverName,
+              payload: req.payload,
+            });
+          });
+        }
+
+        const decision = await PermissionGate.requestApproval(
           'web_search',
           toolPayload,
           'minimi-search-service',
-          options.autoPilot ?? true // Default to true unless explicitly supervised
+          options.autoPilot ?? true
         );
 
-        // If pending approval, notify frontend
-        if (!options.autoPilot) {
-          // Check if it returned a promise that hasn't resolved yet
-          let isResolved = false;
-          approvalPromise.then(() => { isResolved = true; });
-          await new Promise((r) => setTimeout(r, 10));
-
-          if (!isResolved) {
-            // Emits tool_approval_required to Vue UI
-            const approvalId = `req_${Date.now()}`;
-            options.onApprovalRequired({
-              approvalId,
-              toolName: 'web_search',
-              serverName: 'minimi-search-service',
-              payload: toolPayload,
-            });
-          }
-        }
-
-        const decision = await approvalPromise;
+        // Clean up callback
+        PermissionGate.setApprovalCallback(null);
 
         if (!decision.approved) {
           options.onScratchpad({
@@ -177,8 +170,16 @@ ${memoryContext.injectedContextString}
 ${searchContextStr}
 `;
 
+      // Build multi-turn message history from the current session
+      const sessionHistory = await brainVault.episodic.getSessionHistory(sessionId);
+      const historyMessages: LLMMessage[] = sessionHistory
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-10) // Keep last 10 turns to stay within context limits
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
       const messages: LLMMessage[] = [
         { role: 'system', content: systemPromptWithContext },
+        ...historyMessages,
         { role: 'user', content: prompt },
       ];
 

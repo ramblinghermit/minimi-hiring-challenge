@@ -19,6 +19,16 @@ export class PermissionGate {
   /**
    * Check if a tool execution is pre-authorized or requires user approval
    */
+  /**
+   * Callback invoked when a tool needs user approval in supervised mode.
+   * Set by the orchestrator to bridge the approval request to the SSE stream.
+   */
+  private static onApprovalRequired: ((req: ToolApprovalRequest) => void) | null = null;
+
+  public static setApprovalCallback(cb: ((req: ToolApprovalRequest) => void) | null): void {
+    this.onApprovalRequired = cb;
+  }
+
   public static async requestApproval(
     toolName: string,
     payload: Record<string, any>,
@@ -44,6 +54,11 @@ export class PermissionGate {
       payload,
       timestamp: new Date().toISOString(),
     };
+
+    // Notify the frontend about the pending approval via the registered callback
+    if (this.onApprovalRequired) {
+      this.onApprovalRequired(request);
+    }
 
     return new Promise<ToolApprovalDecision>((resolve) => {
       this.pendingApprovals.set(approvalId, { request, resolve });

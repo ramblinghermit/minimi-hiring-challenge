@@ -73,6 +73,38 @@ async function runTests() {
   console.log(`✓ Search returned ${searchRes.results.length} results in ${searchRes.executionTimeMs}ms`);
   console.log('Top Result:', searchRes.results[0].title, `(${searchRes.results[0].url})`);
 
+  // Test 5: Permission Gate & Supervised Governance
+  console.log('\n--- Test 5: Permission Gate Governance ---');
+  const { PermissionGate } = await import('../src/core/agent/permission-gate');
+  PermissionGate.resetPermissions();
+
+  // Test 5a: Auto-pilot allows immediately
+  const autoDec = await PermissionGate.requestApproval('web_search', { q: 'test' }, 'srv', true);
+  console.assert(autoDec.approved === true, 'Auto-pilot should approve automatically');
+  console.log('✓ Auto-pilot approval granted immediately');
+
+  // Test 5b: Supervised mode triggers callback and awaits resolution
+  let capturedApprovalId = '';
+  PermissionGate.setApprovalCallback((req) => {
+    capturedApprovalId = req.approvalId;
+  });
+
+  const pendingPromise = PermissionGate.requestApproval('web_search', { q: 'supervised' }, 'srv', false);
+  console.assert(capturedApprovalId.length > 0, 'Approval callback should have fired with approvalId');
+  console.log('✓ Supervised approval callback captured ID:', capturedApprovalId);
+
+  // Simulate user approval in UI
+  const resolved = PermissionGate.resolveApproval({
+    approvalId: capturedApprovalId,
+    approved: true,
+    approvalType: 'once',
+    toolName: 'web_search',
+  });
+  console.assert(resolved === true, 'resolveApproval should succeed');
+  const manualDec = await pendingPromise;
+  console.assert(manualDec.approved === true, 'Resolved decision should be approved');
+  console.log('✓ Supervised approval resolution verified');
+
   console.log('\n🎉 ALL BENCHMARK VERIFICATION TESTS PASSED SUCCESSFULLY!');
 }
 
