@@ -97,6 +97,11 @@
       </div>
     </div>
 
+    <!-- Reset Feedback Toast -->
+    <div v-if="resetMessage" class="mt-2 p-2 rounded-lg bg-emerald-950/80 border border-emerald-800 text-[11px] text-emerald-300">
+      {{ resetMessage }}
+    </div>
+
     <!-- Governance Setting -->
     <div class="mt-4 pt-3 border-t border-neutral-800 flex items-center justify-between text-xs">
       <span class="text-neutral-400">Governance:</span>
@@ -115,7 +120,7 @@
 <script setup>
 import { ref } from 'vue';
 
-const emit = defineEmits(['run-scenario', 'update:auto-pilot']);
+const emit = defineEmits(['run-scenario', 'update:auto-pilot', 'memory-reset']);
 
 const props = defineProps({
   autoPilot: {
@@ -125,12 +130,13 @@ const props = defineProps({
 });
 
 const isResetting = ref(false);
+const resetMessage = ref('');
 
 const scenarios = [
   'On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?',
   'What did I ask you on 3 November? Is your answer still correct today?',
   'Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?',
-  'Two weeks ago we compared vector databases for our RAG agent. Has Pinecone or Qdrant announced any new serverless pricing or hybrid search updates since?',
+  'Two weeks ago we evaluated vector databases for our RAG agent. Has Pinecone or Qdrant announced any new serverless pricing or hybrid search updates since?',
   'Three days ago I asked you about Drizzle ORM and Prisma. Have there been any new version releases or breaking changes since?'
 ];
 
@@ -144,10 +150,17 @@ const toggleGovernance = () => {
 
 const resetMemory = async () => {
   isResetting.value = true;
+  resetMessage.value = '';
   try {
-    const res = await fetch('/api/memory/reset', { method: 'POST' });
+    const token = localStorage.getItem('minimi_auth_token');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch('/api/memory/reset', { method: 'POST', headers });
     if (res.ok) {
-      alert('Brain-Vault memory reseeded with benchmark datasets!');
+      resetMessage.value = '✓ Brain-Vault reseeded with benchmark scenarios!';
+      emit('memory-reset');
+      setTimeout(() => { resetMessage.value = ''; }, 3500);
     }
   } catch (err) {
     console.error(err);
