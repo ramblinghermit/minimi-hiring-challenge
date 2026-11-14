@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './src/server/routes';
 import { brainVault } from './src/core/memory/brain-vault';
+import { userStore } from './src/core/auth/user-store';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,9 +19,10 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
-  // Initialize Brain-Vault Memory
+  // Initialize Users & Brain-Vault Memory
+  await userStore.init();
   await brainVault.init();
-  console.log('🧠 [Brain-Vault] Memory engine initialized with benchmark dataset.');
+  console.log('🧠 [Brain-Vault] Memory engine & user authentication initialized.');
 
   // Mount API Router
   app.use('/api', apiRouter);

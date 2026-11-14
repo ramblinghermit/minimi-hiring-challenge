@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && tsc --project tsconfig.server.json",
+    "build": "vite build && tsc --noEmit",
     "start": "NODE_ENV=production tsx server.ts",
     "cli": "tsx src/cli.ts",
-    "test": "tsx test/benchmark.test.ts"
+    "test": "tsx test/benchmark.test.ts && tsx test/auth-sessions-timing.test.ts && tsx test/autonomous-recall.test.ts && tsx test/scale-recall-benchmark.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
