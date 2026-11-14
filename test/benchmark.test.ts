@@ -1,3 +1,7 @@
+import path from 'path';
+process.env.NODE_ENV = 'test';
+process.env.BRAIN_VAULT_DIR = path.join(process.cwd(), '.data', 'test_vault');
+
 import { TemporalParser } from '../src/core/memory/temporal-parser';
 import { brainVault } from '../src/core/memory/brain-vault';
 import { QueryPlanner } from '../src/core/search/query-planner';
