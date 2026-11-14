@@ -1,9 +1,12 @@
 import { EpisodicStore } from './episodic-store';
 import { FactStore } from './fact-store';
 import { EntityProfileStore } from './entity-profiles';
+import { SessionStore } from './session-store';
 import { TemporalParser } from './temporal-parser';
+import { KnowledgeExtractor } from './knowledge-extractor';
 import { BrainVaultContext, BrainVaultView, EntityProfile, FactEntry, MemoryEntry } from '../types';
 import { seedBenchmarkScenarios } from './seed-scenarios';
+import { getDefaultStorageDir } from './storage-dir';
 
 /**
  * Brain-Vault Memory Engine (TypeScript Port)
@@ -14,25 +17,31 @@ import { seedBenchmarkScenarios } from './seed-scenarios';
  * - Deterministic Entity Profile Injection
  * - Auto Hybrid routing
  * - Pre-invocation Proactive Recall
+ * - Persistent User-Scoped Chat Sessions
  */
 export class BrainVaultEngine {
   public episodic: EpisodicStore;
   public facts: FactStore;
   public entities: EntityProfileStore;
+  public sessions: SessionStore;
   private isInitialized = false;
 
-  constructor() {
-    this.episodic = new EpisodicStore();
-    this.facts = new FactStore();
-    this.entities = new EntityProfileStore();
+  constructor(storageDir?: string) {
+    const dir = storageDir || getDefaultStorageDir();
+    this.episodic = new EpisodicStore(dir);
+    this.facts = new FactStore(dir);
+    this.entities = new EntityProfileStore(dir);
+    this.sessions = new SessionStore(dir);
   }
 
   public async init(referenceDate: Date = new Date()): Promise<void> {
     if (this.isInitialized) return;
+    await this.sessions.init();
     // Auto-seed benchmark scenarios if storage is empty
     const allMemories = await this.episodic.getAll();
     if (allMemories.length === 0) {
       await seedBenchmarkScenarios(this.episodic, this.facts, this.entities, referenceDate);
+      await this.sessions.seedBenchmarkSessions('default_user', referenceDate);
     }
     this.isInitialized = true;
   }
@@ -45,7 +54,8 @@ export class BrainVaultEngine {
   public async retrieve(
     prompt: string,
     view: BrainVaultView = 'auto',
-    referenceDate: Date = new Date()
+    referenceDate: Date = new Date(),
+    userId?: string
   ): Promise<BrainVaultContext> {
     await this.init(referenceDate);
 
@@ -62,9 +72,9 @@ export class BrainVaultEngine {
     matchedProfiles = await this.entities.matchProfiles(prompt);
 
     // 3. Multi-View Routing
-    if (view === 'episodic' || (view === 'auto' && temporalAnchor)) {
+    if (view === 'episodic' || view === 'auto') {
       if (temporalAnchor) {
-        episodicMemories = await this.episodic.getByTemporalRange(temporalAnchor);
+        episodicMemories = await this.episodic.getByTemporalRange(temporalAnchor, userId);
         
         // If exact range yielded 0, try a slightly relaxed +/- 24h window
         if (episodicMemories.length === 0) {
@@ -75,34 +85,47 @@ export class BrainVaultEngine {
             endDate: new Date(endMs).toISOString(),
             label: temporalAnchor.label,
             anchorType: temporalAnchor.anchorType,
-          });
+          }, userId);
         }
       }
       
-      // Dynamic Salient Keyword Search Fallback:
-      // If temporal range didn't find entries or to supplement anchor retrieval,
-      // extract content words (excluding stopwords) and query episodic store
-      if (episodicMemories.length === 0) {
-        const stopwords = new Set([
-          'what', 'which', 'where', 'when', 'who', 'how', 'why', 'did', 'does', 'have', 'has',
-          'asked', 'about', 'tell', 'show', 'pricing', 'changed', 'since', 'then', 'today',
-          'there', 'their', 'they', 'with', 'from', 'that', 'this', 'last', 'week', 'days'
-        ]);
+      // Dynamic Salient Keyword & Cross-Chat Memory Search:
+      // Search episodic store for relevant words from user prompt
+      const stopwords = new Set([
+        'what', 'which', 'where', 'when', 'who', 'how', 'why', 'did', 'does', 'have', 'has',
+        'asked', 'about', 'tell', 'show', 'pricing', 'changed', 'since', 'then', 'today',
+        'there', 'their', 'they', 'with', 'from', 'that', 'this', 'last', 'week', 'days',
+        'the', 'and', 'for', 'our', 'use', 'just', 'say', 'like', 'mention', 'pick', 'favorite'
+      ]);
 
-        const words = prompt
-          .toLowerCase()
-          .replace(/[^a-z0-9\s]/g, ' ')
-          .split(/\s+/)
-          .filter((w) => w.length >= 3 && !stopwords.has(w));
+      const words = prompt
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 3 && !stopwords.has(w));
 
-        for (const w of words) {
-          const found = await this.episodic.searchByKeyword(w, 3);
-          for (const mem of found) {
-            if (!episodicMemories.some((m) => m.id === mem.id)) {
-              episodicMemories.push(mem);
-            }
+      for (const w of words) {
+        const found = await this.episodic.searchByKeyword(w, 5, userId);
+        for (const mem of found) {
+          if (!episodicMemories.some((m) => m.id === mem.id)) {
+            episodicMemories.push(mem);
           }
-          if (episodicMemories.length >= 5) break;
+        }
+        if (episodicMemories.length >= 10) break;
+      }
+
+      // If user is asking about prior discussions/preferences ("what did I say", "which ORM do we use", "what is my favorite")
+      // pull recent user conversational turns across previous sessions
+      const isRecallIntent = /(what|which|who|where)\s+(did|do|was)\s+(i|we|you)|(favorite|remember|preference|stack|choice|decision|say|said|tell|told|use|pick)/i.test(prompt);
+      if (isRecallIntent && episodicMemories.length < 5) {
+        const allUserEntries = (await this.episodic.getAll())
+          .filter((e) => (!userId || e.userId === userId || e.userId === 'default_user'))
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 10);
+        for (const mem of allUserEntries) {
+          if (!episodicMemories.some((m) => m.id === mem.id)) {
+            episodicMemories.push(mem);
+          }
         }
       }
 
@@ -128,7 +151,19 @@ export class BrainVaultEngine {
       // Filter active facts relevant to matched profiles or prompt keywords
       if (matchedProfiles.length > 0) {
         const entityNames = new Set(matchedProfiles.map((p) => p.entityName.toLowerCase()));
-        activeFacts = activeFacts.filter((f) => entityNames.has(f.subject.toLowerCase()));
+        activeFacts = activeFacts.filter((f) => entityNames.has(f.subject.toLowerCase()) || f.subject.toLowerCase() === 'user' || f.subject.toLowerCase() === 'project');
+      } else {
+        const promptLower = prompt.toLowerCase();
+        const relevantFacts = activeFacts.filter((f) =>
+          f.subject.toLowerCase() === 'user' ||
+          f.subject.toLowerCase() === 'project' ||
+          promptLower.includes(f.subject.toLowerCase()) ||
+          promptLower.includes(f.predicate.toLowerCase()) ||
+          promptLower.includes(f.object.toLowerCase())
+        );
+        if (relevantFacts.length > 0) {
+          activeFacts = relevantFacts;
+        }
       }
     }
 
@@ -186,11 +221,16 @@ export class BrainVaultEngine {
     sessionId: string,
     userQuery: string,
     assistantResponse: string,
-    citations?: any[]
+    citations?: any[],
+    scratchpad?: string[],
+    customTimestamp?: string
   ): Promise<void> {
-    const nowIso = new Date().toISOString();
+    const nowIso = customTimestamp || new Date().toISOString();
 
-    // 1. Add user message
+    // 1. Run Autonomous Knowledge & Fact Extraction (System-level, Zero LLM cost)
+    const extracted = KnowledgeExtractor.extract(userQuery, assistantResponse, userId, nowIso);
+
+    // 2. Add user message to episodic store
     await this.episodic.addEntry({
       userId,
       sessionId,
@@ -199,25 +239,44 @@ export class BrainVaultEngine {
       createdAt: nowIso,
     });
 
-    // 2. Add assistant message
+    // 3. Add assistant message with discovered entities & topics
     await this.episodic.addEntry({
       userId,
       sessionId,
       role: 'assistant',
       content: assistantResponse,
-      createdAt: new Date().toISOString(),
-      metadata: { citations },
+      createdAt: nowIso,
+      metadata: {
+        citations,
+        scratchpad,
+        entities: extracted.entities,
+        topics: extracted.topics,
+      },
     });
+
+    // 4. Automatically upsert discovered entity profiles
+    for (const profile of extracted.profiles) {
+      await this.entities.upsertProfile(profile);
+    }
+
+    // 5. Automatically record tri-temporal facts
+    for (const fact of extracted.facts) {
+      await this.facts.addFact(fact);
+    }
+
+    // 6. Update session metadata and auto-title
+    await this.sessions.touchSession(sessionId, userId, userQuery, userQuery);
   }
 
   /**
    * Reset data to clean state and reseed
    */
-  public async resetAndReseed(referenceDate: Date = new Date()): Promise<void> {
+  public async resetAndReseed(referenceDate: Date = new Date(), userId: string = 'default_user'): Promise<void> {
     await this.episodic.clear();
     await this.facts.clear();
     await this.entities.clear();
     await seedBenchmarkScenarios(this.episodic, this.facts, this.entities, referenceDate);
+    await this.sessions.seedBenchmarkSessions(userId, referenceDate);
   }
 }
 

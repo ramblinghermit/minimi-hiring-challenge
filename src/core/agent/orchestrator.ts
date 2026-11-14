@@ -32,26 +32,35 @@ export class AgentOrchestrator {
     const sessionId = options.sessionId || `session_${Date.now()}`;
     const refDate = options.referenceDate ? new Date(options.referenceDate) : new Date();
 
+    const scratchpadThoughts: string[] = [];
+    const emitScratchpad = (event: ScratchpadEvent) => {
+      const text = event.content || event.type;
+      if (text) {
+        scratchpadThoughts.push(text);
+      }
+      options.onScratchpad(event);
+    };
+
     try {
       // =================================================================
       // STEP 1: Brain-Vault Proactive Direct Recall (Pre-Invocation)
       // =================================================================
-      options.onScratchpad({
+      emitScratchpad({
         type: 'agent_status',
         content: 'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
       });
 
-      const memoryContext = await brainVault.retrieve(prompt, 'auto', refDate);
+      const memoryContext = await brainVault.retrieve(prompt, 'auto', refDate, userId);
 
       if (memoryContext.temporalAnchor) {
-        options.onScratchpad({
+        emitScratchpad({
           type: 'memory_recall',
           content: `Resolved Temporal Anchor: ${memoryContext.temporalAnchor.label} (${memoryContext.temporalAnchor.anchorType})`,
         });
       }
 
       if (memoryContext.episodicMemories.length > 0) {
-        options.onScratchpad({
+        emitScratchpad({
           type: 'memory_recall',
           content: `Recalled ${memoryContext.episodicMemories.length} historical conversation turns from episodic store.`,
         });
@@ -59,23 +68,31 @@ export class AgentOrchestrator {
 
       if (memoryContext.entityProfiles.length > 0) {
         const entityList = memoryContext.entityProfiles.map((p) => p.entityName).join(', ');
-        options.onScratchpad({
+        emitScratchpad({
           type: 'memory_recall',
           content: `Deterministic Entity Profile Injection: ${entityList}`,
         });
       }
 
+      // Build multi-turn message history from the current active session first
+      const sessionHistory = await brainVault.episodic.getSessionHistory(sessionId, userId);
+      const historyMessages: LLMMessage[] = sessionHistory
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-10) // Keep last 10 turns to stay within context limits
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
       // =================================================================
-      // STEP 2: Query Planning & Search Intent Analysis
+      // STEP 2: Query Planning & Search Intent Analysis (Priority-Aware)
+      // Prioritizes in-chat history before checking cross-chat memory / web search
       // =================================================================
-      const shouldSearch = QueryPlanner.shouldSearch(prompt, memoryContext);
+      const shouldSearch = QueryPlanner.shouldSearch(prompt, memoryContext, historyMessages);
       let citations: SourceCitation[] = [];
       let searchContextStr = '';
 
       if (shouldSearch) {
         const plan = QueryPlanner.planQueries(prompt, memoryContext);
 
-        options.onScratchpad({
+        emitScratchpad({
           type: 'agent_status',
           content: `Search Strategy Planned: ${plan.reason} (${plan.queries.length} queries)`,
         });
@@ -90,7 +107,7 @@ export class AgentOrchestrator {
           targetEntities: plan.targetEntities,
         };
 
-        options.onScratchpad({
+        emitScratchpad({
           type: 'tool_start',
           content: 'Requesting permission to execute web search tool',
           tool_name: 'web_search',
@@ -120,7 +137,7 @@ export class AgentOrchestrator {
         PermissionGate.setApprovalCallback(null);
 
         if (!decision.approved) {
-          options.onScratchpad({
+          emitScratchpad({
             type: 'agent_status',
             content: 'Web search execution was denied by user. Falling back to existing memory.',
           });
@@ -130,7 +147,7 @@ export class AgentOrchestrator {
           // =================================================================
           // STEP 4: Web Search Execution ("The One Tool")
           // =================================================================
-          options.onScratchpad({
+          emitScratchpad({
             type: 'agent_status',
             content: `Executing parallel web search via ${searchRouter.getActiveProvider().toUpperCase()}...`,
           });
@@ -139,9 +156,7 @@ export class AgentOrchestrator {
           citations = searchOutput.citations;
           searchContextStr = formatSearchContext(citations);
 
-          options.onCitations(citations);
-
-          options.onScratchpad({
+          emitScratchpad({
             type: 'tool_end',
             content: `Search completed in ${searchOutput.executionTimeMs}ms. Retrieved ${searchOutput.results.length} verified web sources.`,
             tool_name: 'web_search',
@@ -156,7 +171,7 @@ export class AgentOrchestrator {
       // =================================================================
       // STEP 5: Temporal Diff Synthesis & LLM Streaming
       // =================================================================
-      options.onScratchpad({
+      emitScratchpad({
         type: 'agent_status',
         content: 'Synthesizing temporal comparison and streaming response...',
       });
@@ -169,13 +184,6 @@ ${memoryContext.injectedContextString}
 
 ${searchContextStr}
 `;
-
-      // Build multi-turn message history from the current session
-      const sessionHistory = await brainVault.episodic.getSessionHistory(sessionId);
-      const historyMessages: LLMMessage[] = sessionHistory
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .slice(-10) // Keep last 10 turns to stay within context limits
-        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
       const messages: LLMMessage[] = [
         { role: 'system', content: systemPromptWithContext },
@@ -190,9 +198,24 @@ ${searchContextStr}
       });
 
       // =================================================================
-      // STEP 6: Brain-Vault Post-Turn Knowledge Capture
+      // STEP 6: Sources Reveal (Pop up AFTER text has completely loaded)
       // =================================================================
-      await brainVault.captureTurn(userId, sessionId, prompt, fullAssistantText, citations);
+      if (citations && citations.length > 0) {
+        options.onCitations(citations);
+      }
+
+      // =================================================================
+      // STEP 7: Brain-Vault Post-Turn Knowledge Capture
+      // =================================================================
+      await brainVault.captureTurn(
+        userId,
+        sessionId,
+        prompt,
+        fullAssistantText,
+        citations,
+        scratchpadThoughts,
+        options.referenceDate ? refDate.toISOString() : undefined
+      );
 
       options.onDone();
     } catch (err: any) {

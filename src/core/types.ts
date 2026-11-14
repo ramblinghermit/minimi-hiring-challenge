@@ -21,6 +21,7 @@ export interface MemoryEntry {
     topics?: string[];
     pricingMentioned?: Record<string, string>;
     citations?: SourceCitation[];
+    scratchpad?: string[];
   };
 }
 
@@ -131,6 +132,7 @@ export type StreamEventType =
   | 'llm_token'
   | 'citations'
   | 'plain_text_answer'
+  | 'agent_error'
   | 'error'
   | 'done';
 
@@ -141,3 +143,52 @@ export interface ScratchpadEvent {
   tool_input?: any;
   observation?: any;
 }
+
+// ==========================================
+// Authentication & User Types
+// ==========================================
+
+export interface User {
+  id: string;
+  username: string;
+  passwordHash: string;
+  name: string;
+  role?: string;
+  avatar?: string;
+  createdAt: string;
+}
+
+export type SafeUser = Omit<User, 'passwordHash'>;
+
+export interface AuthSession {
+  token: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+// ==========================================
+// Chat Session & History Types
+// ==========================================
+
+export interface ChatSession {
+  id: string;
+  userId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount?: number;
+  lastMessagePreview?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'permission_request';
+  text: string;
+  time: string;
+  createdAt?: string;
+  scratchpad?: string[];
+  citations?: SourceCitation[];
+  isStreaming?: boolean;
+}
+

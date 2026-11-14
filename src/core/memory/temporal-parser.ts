@@ -107,11 +107,44 @@ export class TemporalParser {
       }
     }
 
-    // 3. Multi-week with optional weekday: "2 weeks ago on Friday", "two weeks ago", "last week"
-    const weeksAgoRegex = /\b(last|\d+|one|two|three|four)\s+weeks?\s+ago(?:\s+(?:on\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat))?\b/i;
+    // 3. Multi-month: "1 month ago", "a month ago", "one month ago", "last month", "2 months ago"
+    const monthsAgoRegex = /\b(last|\d+|one|two|three|four|a)\s+months?\s+ago\b|\blast\s+month\b/i;
+    const monthsMatch = text.match(monthsAgoRegex);
+    if (monthsMatch) {
+      let numMonths = 1;
+      if (monthsMatch[1]) {
+        const val = monthsMatch[1].toLowerCase();
+        numMonths = (val === 'last' || val === 'a') ? 1 : this.parseNumber(val);
+      }
+      const target = new Date(referenceDate);
+      target.setDate(referenceDate.getDate() - (numMonths * 30));
+      target.setHours(0, 0, 0, 0);
+
+      const startWindow = new Date(target);
+      startWindow.setDate(target.getDate() - 3); // Allow a small window around 1 month ago
+      startWindow.setHours(0, 0, 0, 0);
+
+      const endWindow = new Date(target);
+      endWindow.setDate(target.getDate() + 3);
+      endWindow.setHours(23, 59, 59, 999);
+
+      return {
+        startDate: startWindow.toISOString(),
+        endDate: endWindow.toISOString(),
+        label: `${numMonths} month(s) ago (${target.toISOString().split('T')[0]})`,
+        anchorType: 'relative',
+      };
+    }
+
+    // 4. Multi-week with optional weekday: "2 weeks ago on Friday", "two weeks ago", "last week", "a week ago"
+    const weeksAgoRegex = /\b(last|\d+|one|two|three|four|a)\s+weeks?\s+ago(?:\s+(?:on\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat))?\b|\blast\s+week\b/i;
     const weeksMatch = text.match(weeksAgoRegex);
     if (weeksMatch) {
-      const numWeeks = weeksMatch[1].toLowerCase() === 'last' ? 1 : this.parseNumber(weeksMatch[1]);
+      let numWeeks = 1;
+      if (weeksMatch[1]) {
+        const val = weeksMatch[1].toLowerCase();
+        numWeeks = (val === 'last' || val === 'a') ? 1 : this.parseNumber(val);
+      }
       const target = new Date(referenceDate);
       target.setDate(referenceDate.getDate() - (numWeeks * 7));
 
@@ -123,18 +156,23 @@ export class TemporalParser {
       }
 
       target.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(target);
-      endOfDay.setHours(23, 59, 59, 999);
+      const startWindow = new Date(target);
+      startWindow.setDate(target.getDate() - 1);
+      startWindow.setHours(0, 0, 0, 0);
+
+      const endWindow = new Date(target);
+      endWindow.setDate(target.getDate() + 1);
+      endWindow.setHours(23, 59, 59, 999);
 
       return {
-        startDate: target.toISOString(),
-        endDate: endOfDay.toISOString(),
+        startDate: startWindow.toISOString(),
+        endDate: endWindow.toISOString(),
         label: `${numWeeks} week(s) ago (${target.toISOString().split('T')[0]})`,
         anchorType: 'relative',
       };
     }
 
-    // 4. Days ago: "3 days ago", "two days ago", "five days ago"
+    // 5. Days ago: "3 days ago", "two days ago", "five days ago"
     const daysAgoRegex = /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+days?\s+ago\b/i;
     const daysAgoMatch = text.match(daysAgoRegex);
     if (daysAgoMatch) {

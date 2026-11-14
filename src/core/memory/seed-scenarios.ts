@@ -76,6 +76,14 @@ export async function seedBenchmarkScenarios(
     metadata: {
       entities: ['HubSpot', 'Pipedrive', 'Zoho CRM', 'Close CRM', 'Salesforce Sales Cloud'],
       topics: ['crm', 'sales tools', 'pricing for 20-person team'],
+      scratchpad: [
+        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Resolved Temporal Anchor: Monday (relative anchor)',
+        'Search Strategy Planned: Shortlist 5 CRM tools with pricing for 20-seat sales team',
+        'Executing parallel web search via BRAVE...',
+        'Search completed in 320ms. Retrieved 5 verified web sources.',
+        'Synthesizing CRM shortlist comparison and streaming response...',
+      ],
     },
   });
 
@@ -137,6 +145,14 @@ export async function seedBenchmarkScenarios(
     metadata: {
       entities: ['Claude 3.5 Haiku', 'Anthropic'],
       topics: ['llm pricing', 'context window', 'haiku'],
+      scratchpad: [
+        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Resolved Temporal Anchor: 3 November 2026 (absolute anchor)',
+        'Search Strategy Planned: Anthropic Claude 3.5 Haiku pricing context window specs',
+        'Executing parallel web search via BRAVE...',
+        'Search completed in 275ms. Retrieved 4 verified web sources.',
+        'Synthesizing Claude 3.5 Haiku specifications and streaming response...',
+      ],
     },
   });
 
@@ -189,6 +205,14 @@ export async function seedBenchmarkScenarios(
     metadata: {
       entities: ['Supabase', 'Neon', 'AWS Aurora Serverless', 'Crunchy Bridge'],
       topics: ['postgres hosting', 'database pricing', 'serverless postgres'],
+      scratchpad: [
+        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Resolved Temporal Anchor: Last Tuesday (relative anchor)',
+        'Search Strategy Planned: Managed Postgres hosting pricing breakdown Supabase Neon Aurora Crunchy',
+        'Executing parallel web search via BRAVE...',
+        'Search completed in 390ms. Retrieved 6 verified web sources.',
+        'Synthesizing Postgres hosting breakdown and streaming response...',
+      ],
     },
   });
 
@@ -253,6 +277,14 @@ export async function seedBenchmarkScenarios(
     metadata: {
       entities: ['Pinecone', 'Qdrant', 'Milvus', 'Weaviate'],
       topics: ['vector database', 'rag', 'serverless pricing'],
+      scratchpad: [
+        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Resolved Temporal Anchor: Two weeks ago (relative anchor)',
+        'Search Strategy Planned: Vector database serverless pricing Pinecone Qdrant Milvus Weaviate',
+        'Executing parallel web search via BRAVE...',
+        'Search completed in 340ms. Retrieved 5 verified web sources.',
+        'Synthesizing vector database pricing evaluation and streaming response...',
+      ],
     },
   });
 
@@ -315,6 +347,14 @@ export async function seedBenchmarkScenarios(
     metadata: {
       entities: ['Drizzle ORM', 'Prisma ORM'],
       topics: ['typescript orm', 'serverless cold starts', 'drizzle vs prisma'],
+      scratchpad: [
+        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Resolved Temporal Anchor: Three days ago (relative anchor)',
+        'Search Strategy Planned: Drizzle ORM and Prisma releases cold starts serverless benchmarks',
+        'Executing parallel web search via BRAVE...',
+        'Search completed in 310ms. Retrieved 4 verified web sources.',
+        'Synthesizing ORM comparison and streaming response...',
+      ],
     },
   });
 

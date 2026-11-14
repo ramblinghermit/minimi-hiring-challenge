@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { EntityProfile } from '../types';
+import { getDefaultStorageDir } from './storage-dir';
 
 /**
  * Brain-Vault Deterministic Entity Profile Store
@@ -12,7 +13,7 @@ export class EntityProfileStore {
   private profiles: EntityProfile[] = [];
   private isLoaded = false;
 
-  constructor(storageDir: string = path.join(process.cwd(), '.data', 'brain_vault')) {
+  constructor(storageDir: string = getDefaultStorageDir()) {
     this.filePath = path.join(storageDir, 'entities.json');
   }
 

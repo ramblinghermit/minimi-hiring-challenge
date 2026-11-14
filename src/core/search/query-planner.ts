@@ -16,7 +16,7 @@ export class QueryPlanner {
   /**
    * Determine if the user prompt requires web search
    */
-  public static shouldSearch(prompt: string, context?: BrainVaultContext): boolean {
+  public static shouldSearch(prompt: string, context?: BrainVaultContext, inChatHistory?: any[]): boolean {
     const text = prompt.toLowerCase().trim();
 
     // Pure conversational greetings / meta questions do not require search
@@ -40,6 +40,28 @@ export class QueryPlanner {
       text.includes('status')
     ) {
       return true;
+    }
+
+    // In-chat or conversational memory recall queries should NOT trigger web search
+    const isMemoryRecallQuery =
+      /^(what|which|who|where|how)\b.*?\b(did|do|was|is|are|were|have)\s+(i|we|you|our|my)\b/i.test(text) ||
+      /\b(did i|did we|do we|have we|did you)\s+(say|mention|tell|discuss|state|pick|choose)\b/i.test(text) ||
+      /\b(what did i (just )?say|what did i tell you|what is (my|our)|which (orm|database|cache|tool|stack) do we use|do you remember|what do you remember about me|who am i|what do you know about me)\b/i.test(text);
+
+    if (isMemoryRecallQuery) {
+      return false;
+    }
+
+    // PRIORITY 1: In-chat conversational continuation
+    // If there is active in-chat history and the user is asking a conversational follow-up or coreference,
+    // prioritize resolving it from the current chat history without external web search
+    if (inChatHistory && inChatHistory.length > 0) {
+      const isConversationalFollowup =
+        /^(why|how|explain|elaborate|clarify|what about|tell me more|what did you mean|expand on|summarize that)\b/i.test(text) ||
+        /\b(that|this|it|the first one|the second one|above|mentioned)\b/i.test(text);
+      if (isConversationalFollowup) {
+        return false;
+      }
     }
 
     // If temporal anchor is detected and user is asking about past context validity
