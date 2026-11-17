@@ -476,15 +476,8 @@ apiRouter.get('/models', (_req: Request, res: Response) => {
   res.json({
     active,
     options: [
-      { id: 'gemini-3.5-flash', provider: 'vertex', name: 'Gemini 3.5 Flash (Vertex AI • Recommended)' },
-      { id: 'gemini-3.1-flash-lite', provider: 'vertex', name: 'Gemini 3.1 Flash-Lite (Vertex AI)' },
-      { id: 'gemini-3.5-flash-lite', provider: 'vertex', name: 'Gemini 3.5 Flash-Lite (Vertex AI)' },
-      { id: 'gemini-2.5-flash-lite', provider: 'gemini', name: 'Gemini 2.5 Flash-Lite' },
-      { id: 'gpt-4o-mini', provider: 'openai', name: 'GPT-4o Mini (Fast)' },
-      { id: 'gpt-4o', provider: 'openai', name: 'GPT-4o (Reasoning)' },
-      { id: 'claude-3-5-haiku-latest', provider: 'anthropic', name: 'Claude 3.5 Haiku' },
-      { id: 'claude-3-5-sonnet-latest', provider: 'anthropic', name: 'Claude 3.5 Sonnet' },
-      { id: 'llama-3.3-70b-versatile', provider: 'groq', name: 'Groq Llama 3.3 70B' },
+      { id: 'gemini-2.5-flash', provider: active.provider, name: 'Gemini 2.5 Flash (Primary • Recommended)' },
+      { id: 'gemini-3.5-flash', provider: active.provider, name: 'Gemini 3.5 Flash (Next-Gen)' },
     ],
   });
 });

@@ -302,7 +302,7 @@ ${memoryContext.injectedContextString}
               content: 'Web search execution was denied by user. Falling back to existing memory.',
             });
           } else {
-            options.onToolApproved({ toolName: 'web_search' });
+            options.onToolApproved?.({ toolName: 'web_search' });
 
             emitScratchpad({
               type: 'agent_status',

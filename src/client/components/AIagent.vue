@@ -507,7 +507,7 @@ const inputPrompt = ref('');
 const isProcessing = ref(false);
 const showBenchmark = ref(false);
 const autoPilot = ref(true);
-const selectedModel = ref('gemini-3.5-flash');
+const selectedModel = ref('gemini-2.5-flash');
 const currentAgentMessageIndex = ref(-1);
 const copiedIndex = ref(null);
 const chatList = ref(null);
@@ -530,21 +530,14 @@ const isListening = ref(false);
 let recognitionInstance = null;
 
 const availableModels = ref([
-  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', tier: 'Fast', provider: 'Google', description: 'Recommended • Fast sub-2s streaming & accurate recall' },
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', tier: 'Instant', provider: 'Google', description: 'Lowest latency • Sub-second TTFT streaming' },
-  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', tier: 'Reasoning', provider: 'Google', description: 'Deep reasoning & multithreaded analysis' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', tier: 'Flash', provider: 'Google', description: 'Google AI Studio standard model' },
-  { id: 'gpt-4o', name: 'GPT-4o', tier: 'Reasoning', provider: 'OpenAI', description: 'Deep reasoning & instruction following' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', tier: 'Fast', provider: 'OpenAI', description: 'Lightweight & cost-efficient' },
-  { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', tier: 'Smart', provider: 'Anthropic', description: 'State-of-the-art coding and nuanced recall' },
-  { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku', tier: 'Fast', provider: 'Anthropic', description: 'High-speed Anthropic model' },
-  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', tier: 'Groq', provider: 'Groq', description: 'High-throughput open weights inference' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', tier: 'Primary', provider: 'Google', description: 'Recommended • Fast sub-second streaming & quota-friendly' },
+  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', tier: 'Next-Gen', provider: 'Google', description: 'Next-generation reasoning & temporal delta synthesis' },
 ]);
 
 const currentModelInfo = computed(() => {
   const match = availableModels.value.find(m => m.id === selectedModel.value);
   if (match) return match;
-  return { id: selectedModel.value, name: 'Gemini 3.5 Flash', tier: 'Fast', provider: 'Google' };
+  return { id: selectedModel.value, name: 'Gemini 2.5 Flash', tier: 'Primary', provider: 'Google' };
 });
 
 const selectModel = (id) => {

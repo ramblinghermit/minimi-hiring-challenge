@@ -69,17 +69,36 @@ export class LLMClient {
   }
 
   public static getAvailableProvider(): { provider: string; model: string } {
+    // 1. Explicit override via LLM_PROVIDER env variable
+    const explicitProvider = process.env.LLM_PROVIDER?.toLowerCase().trim();
+    if (explicitProvider === 'vertex' && this.hasVertexCredentials()) {
+      return { provider: 'vertex', model: process.env.VERTEX_MODEL || 'gemini-2.5-flash' };
+    }
+    if (explicitProvider === 'gemini' && (process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_FALLBACK)) {
+      return { provider: 'gemini', model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' };
+    }
+    if (explicitProvider === 'openai' && process.env.OPENAI_API_KEY) {
+      return { provider: 'openai', model: process.env.OPENAI_MODEL || 'gpt-4o-mini' };
+    }
+    if (explicitProvider === 'anthropic' && process.env.ANTHROPIC_API_KEY) {
+      return { provider: 'anthropic', model: process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest' };
+    }
+    if (explicitProvider === 'groq' && process.env.GROQ_API_KEY) {
+      return { provider: 'groq', model: 'llama-3.3-70b-versatile' };
+    }
+
+    // 2. Default automatic detection
+    if (process.env.GEMINI_API_KEY) {
+      return { provider: 'gemini', model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' };
+    }
     if (this.hasVertexCredentials()) {
-      return { provider: 'vertex', model: process.env.VERTEX_MODEL || 'gemini-3.5-flash' };
+      return { provider: 'vertex', model: process.env.VERTEX_MODEL || 'gemini-2.5-flash' };
     }
     if (process.env.OPENAI_API_KEY) {
       return { provider: 'openai', model: process.env.OPENAI_MODEL || 'gpt-4o-mini' };
     }
     if (process.env.ANTHROPIC_API_KEY) {
       return { provider: 'anthropic', model: process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest' };
-    }
-    if (process.env.GEMINI_API_KEY) {
-      return { provider: 'gemini', model: process.env.GEMINI_MODEL || 'gemini-3.5-flash' };
     }
     if (process.env.GROQ_API_KEY) {
       return { provider: 'groq', model: 'llama-3.3-70b-versatile' };
@@ -102,7 +121,12 @@ export class LLMClient {
     if (!provider && model) {
       if (model.startsWith('gpt-')) provider = 'openai';
       else if (model.startsWith('claude-')) provider = 'anthropic';
-      else if (model.startsWith('gemini-')) provider = this.hasVertexCredentials() ? 'vertex' : 'gemini';
+      else if (model.startsWith('gemini-')) {
+        const explicit = process.env.LLM_PROVIDER?.toLowerCase().trim();
+        if (explicit === 'vertex' && this.hasVertexCredentials()) provider = 'vertex';
+        else if (explicit === 'gemini') provider = 'gemini';
+        else provider = process.env.GEMINI_API_KEY ? 'gemini' : (this.hasVertexCredentials() ? 'vertex' : 'gemini');
+      }
       else if (model.startsWith('llama-')) provider = 'groq';
     }
 
@@ -237,12 +261,25 @@ export class LLMClient {
     if (!provider && model) {
       if (model.startsWith('gpt-')) provider = 'openai';
       else if (model.startsWith('claude-')) provider = 'anthropic';
-      else if (model.startsWith('gemini-')) provider = this.hasVertexCredentials() ? 'vertex' : 'gemini';
+      else if (model.startsWith('gemini-')) {
+        const explicit = process.env.LLM_PROVIDER?.toLowerCase().trim();
+        if (explicit === 'vertex' && this.hasVertexCredentials()) provider = 'vertex';
+        else if (explicit === 'gemini') provider = 'gemini';
+        else provider = process.env.GEMINI_API_KEY ? 'gemini' : (this.hasVertexCredentials() ? 'vertex' : 'gemini');
+      }
       else if (model.startsWith('llama-')) provider = 'groq';
     }
 
     provider = provider || config.provider;
     model = model || config.model;
+
+    if (provider === 'gemini' && (process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_FALLBACK)) {
+      try {
+        return await this.stepGeminiWithTools(messages, model, tools, options);
+      } catch (err: any) {
+        console.warn(`[LLMClient] Gemini API tool step failed: ${err.message}. Falling back.`);
+      }
+    }
 
     if (provider === 'vertex' && this.hasVertexCredentials()) {
       try {
@@ -349,6 +386,94 @@ export class LLMClient {
     }
 
     throw lastError || new Error('Vertex tool call failed');
+  }
+
+  /**
+   * Gemini API tool calling via @google/genai SDK (API key auth, v1beta)
+   */
+  private static async stepGeminiWithTools(
+    messages: LLMMessage[],
+    model: string,
+    tools: ToolDefinition[],
+    options: { signal?: AbortSignal; checkpoint?: () => Promise<void> }
+  ): Promise<LLMStepResult> {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_FALLBACK;
+    if (!apiKey) {
+      throw new Error('No GEMINI_API_KEY configured');
+    }
+
+    const systemPrompt = messages.find((m) => m.role === 'system')?.content || SYSTEM_PROMPT;
+    const contents = messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      }));
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: { apiVersion: 'v1beta' },
+    });
+
+    const functionDeclarations = tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: {
+        type: Type.OBJECT,
+        properties: Object.fromEntries(
+          Object.entries(t.parameters.properties).map(([k, v]) => [
+            k,
+            { type: (v.type.toUpperCase() === 'STRING' ? Type.STRING : Type.STRING) as any, description: v.description },
+          ])
+        ),
+        required: t.parameters.required,
+      },
+    }));
+
+    const candidateModels = [
+      model,
+      process.env.GEMINI_MODEL,
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+    ].filter(Boolean) as string[];
+
+    const uniqueCandidates = [...new Set(candidateModels)];
+    let lastError: Error | null = null;
+
+    for (const cand of uniqueCandidates) {
+      try {
+        const response = await ai.models.generateContent({
+          model: cand,
+          contents: contents as any,
+          config: {
+            systemInstruction: systemPrompt,
+            tools: [{ functionDeclarations }],
+          },
+        });
+
+        const functionCalls = response.functionCalls;
+        if (functionCalls && functionCalls.length > 0) {
+          const call = functionCalls[0];
+          return {
+            toolCall: {
+              name: call.name || 'web_search',
+              args: (call.args as Record<string, any>) || {},
+            },
+          };
+        }
+
+        return {
+          text: response.text || '',
+        };
+      } catch (err: any) {
+        console.warn(`[LLMClient] Gemini API tool step failed on ${cand}: ${err.message}. Trying next candidate...`);
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('Gemini API tool call failed on all candidate models');
   }
 
   private static async stepOpenAIWithTools(
@@ -699,71 +824,84 @@ export class LLMClient {
         parts: [{ text: m.content }],
       }));
 
-    const normalizeStudioModel = (m?: string): string => {
-      if (!m || m.startsWith('gemini-3.')) return 'gemini-2.5-flash';
-      return m;
-    };
+    const candidates = [
+      model,
+      process.env.GEMINI_MODEL,
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+    ].filter(Boolean) as string[];
 
-    const targetModel = normalizeStudioModel(model || process.env.GEMINI_MODEL);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${apiKey}`;
+    const uniqueCandidates = [...new Set(candidates)];
+    let lastError: Error | null = null;
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents,
-      }),
-      signal: options.signal,
-    });
+    for (const targetModel of uniqueCandidates) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${apiKey}`;
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Gemini API error ${res.status} on ${targetModel}: ${errText}`);
-    }
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents,
+          }),
+          signal: options.signal,
+        });
 
-    const reader = res.body?.getReader();
-    if (!reader) {
-      throw new Error(`Gemini stream body empty on ${targetModel}`);
-    }
-
-    const decoder = new TextDecoder();
-    let fullText = '';
-    let buffer = '';
-
-    while (true) {
-      if (options.signal?.aborted) break;
-      if (options.checkpoint) await options.checkpoint();
-
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (options.signal?.aborted) break;
-        if (options.checkpoint) await options.checkpoint();
-
-        if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            const token = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            if (token) {
-              fullText += token;
-              options.onToken(token);
-            }
-          } catch {}
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Gemini API error ${res.status} on ${targetModel}: ${errText}`);
         }
+
+        const reader = res.body?.getReader();
+        if (!reader) {
+          throw new Error(`Gemini stream body empty on ${targetModel}`);
+        }
+
+        const decoder = new TextDecoder();
+        let fullText = '';
+        let buffer = '';
+
+        while (true) {
+          if (options.signal?.aborted) break;
+          if (options.checkpoint) await options.checkpoint();
+
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (options.signal?.aborted) break;
+            if (options.checkpoint) await options.checkpoint();
+
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                const token = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                if (token) {
+                  fullText += token;
+                  options.onToken(token);
+                }
+              } catch {}
+            }
+          }
+        }
+
+        if (fullText.trim()) {
+          return fullText;
+        }
+      } catch (err: any) {
+        console.warn(`[LLMClient] streamGemini failed on ${targetModel}: ${err.message}. Trying next candidate...`);
+        lastError = err;
       }
     }
 
-    if (!fullText.trim()) {
-      throw new Error(`Empty response from Gemini model ${targetModel}`);
-    }
-
-    return fullText;
+    throw lastError || new Error('All Gemini streaming model candidates failed');
   }
 
   /**
