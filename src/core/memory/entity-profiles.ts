@@ -2,44 +2,70 @@ import fs from 'fs/promises';
 import path from 'path';
 import { EntityProfile } from '../types';
 import { getDefaultStorageDir } from './storage-dir';
+import { AtomicFileWriter } from './atomic-file-writer';
+
+export function isProfileUserMatch(profileUserId?: string, targetUserId?: string): boolean {
+  const normProf = profileUserId || 'default_user';
+  const normTarget = targetUserId || 'default_user';
+  if (normProf === normTarget) return true;
+  if ((normProf === 'demo' && normTarget === 'usr_demo') || (normProf === 'usr_demo' && normTarget === 'demo')) return true;
+  if ((normTarget === 'demo' || normTarget === 'usr_demo') && normProf === 'default_user') return true;
+  return false;
+}
 
 /**
- * Brain-Vault Deterministic Entity Profile Store
+ * Deterministic Entity Profile Store
  * Bypasses fuzzy vector search to guarantee 100% deterministic recall of shortlisted entities.
- * (Directly ports Brain-Vault's _inject_entity_profiles pattern)
  */
 export class EntityProfileStore {
   private filePath: string;
   private profiles: EntityProfile[] = [];
   private isLoaded = false;
+  private lastMtimeMs = 0;
 
   constructor(storageDir: string = getDefaultStorageDir()) {
     this.filePath = path.join(storageDir, 'entities.json');
   }
 
   private async ensureLoaded(): Promise<void> {
-    if (this.isLoaded) return;
     try {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+      const stat = await fs.stat(this.filePath);
+      if (this.isLoaded && stat.mtimeMs <= this.lastMtimeMs) {
+        return;
+      }
       const raw = await fs.readFile(this.filePath, 'utf-8');
       this.profiles = JSON.parse(raw);
-    } catch {
-      this.profiles = [];
+      this.lastMtimeMs = stat.mtimeMs;
+      this.isLoaded = true;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        this.profiles = [];
+        this.lastMtimeMs = 0;
+        this.isLoaded = true;
+      } else if (!this.isLoaded) {
+        this.profiles = [];
+        this.isLoaded = true;
+      }
     }
-    this.isLoaded = true;
   }
 
   private async persist(): Promise<void> {
-    const dir = path.dirname(this.filePath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(this.profiles, null, 2), 'utf-8');
+    await AtomicFileWriter.write(this.filePath, this.profiles);
+    try {
+      const stat = await fs.stat(this.filePath);
+      this.lastMtimeMs = stat.mtimeMs;
+    } catch {
+      this.lastMtimeMs = Date.now();
+    }
   }
 
   public async upsertProfile(profile: Omit<EntityProfile, 'id' | 'lastObservedAt'>): Promise<EntityProfile> {
     await this.ensureLoaded();
     const nowIso = new Date().toISOString();
     const existingIndex = this.profiles.findIndex(
-      (p) => p.entityName.toLowerCase() === profile.entityName.toLowerCase()
+      (p) => p.entityName.toLowerCase() === profile.entityName.toLowerCase() &&
+        isProfileUserMatch(p.userId, profile.userId)
     );
 
     if (existingIndex >= 0) {
@@ -68,14 +94,15 @@ export class EntityProfileStore {
 
   /**
    * Deterministic matching on query string (word boundary match)
-   * Matches Brain-Vault's regex pattern to avoid false substring matches.
+   * Regex pattern with word boundaries to avoid false substring matches.
    */
-  public async matchProfiles(query: string): Promise<EntityProfile[]> {
+  public async matchProfiles(query: string, userId?: string): Promise<EntityProfile[]> {
     await this.ensureLoaded();
     const queryLower = query.toLowerCase();
     const matched: EntityProfile[] = [];
 
     for (const profile of this.profiles) {
+      if (userId && !isProfileUserMatch(profile.userId, userId)) continue;
       const name = profile.entityName.toLowerCase();
       // Word boundary regex check
       const regex = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');

@@ -43,9 +43,9 @@ async function runTests() {
   }
 
   // =========================================================================
-  // Test 2: Brain-Vault Multi-View Recall & Dynamic Keyword Matching
+  // Test 2: Memory System Multi-View Recall & Dynamic Keyword Matching
   // =========================================================================
-  console.log('\n--- Test 2: Brain-Vault Multi-View Memory Recall on Real Questions ---');
+  console.log('\n--- Test 2: Memory System Multi-View Recall on Real Questions ---');
   await brainVault.resetAndReseed(refDate);
 
   // Scenario A: CRM Shortlist (Monday)
@@ -218,6 +218,7 @@ async function runTests() {
   console.log('✓ Multi-turn memory verified: 4 sequential conversational turns preserved in session ledger');
 
   console.log('\n🎉 ALL 7 ADVANCED BENCHMARK & FULL FLOW TESTS PASSED SUCCESSFULLY!');
+  process.exit(0);
 }
 
 runTests().catch((err) => {

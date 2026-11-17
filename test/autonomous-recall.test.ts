@@ -7,6 +7,13 @@ import { brainVault } from '../src/core/memory/brain-vault';
 import { AgentOrchestrator } from '../src/core/agent/orchestrator';
 import { TemporalParser } from '../src/core/memory/temporal-parser';
 
+function assertStrict(condition: any, message: string): asserts condition {
+  if (!condition) {
+    console.error(`❌ STRICT ASSERTION FAILED: ${message}`);
+    throw new Error(`StrictAssertionError: ${message}`);
+  }
+}
+
 async function runAutonomousRecallTest() {
   console.log('🧪 Starting Pure End-to-End Autonomous Memory & Temporal Recall Test...\n');
 
@@ -95,8 +102,8 @@ async function runAutonomousRecallTest() {
   const stripeProfile = allProfiles.find((p) => p.entityName.toLowerCase() === 'stripe');
   const resendProfile = allProfiles.find((p) => p.entityName.toLowerCase() === 'resend');
 
-  console.assert(stripeProfile !== undefined, 'System must autonomously create Stripe profile');
-  console.assert(resendProfile !== undefined, 'System must autonomously create Resend profile');
+  assertStrict(stripeProfile !== undefined, 'System must autonomously create Stripe profile');
+  assertStrict(resendProfile !== undefined, 'System must autonomously create Resend profile');
   console.log(`✓ Autonomous Entity Profiles verified: ${stripeProfile?.entityName} (${JSON.stringify(stripeProfile?.profileData)}), ${resendProfile?.entityName} (${JSON.stringify(resendProfile?.profileData)})`);
 
   // Verify tri-temporal facts extracted
@@ -104,16 +111,16 @@ async function runAutonomousRecallTest() {
   const stripeFact = allFacts.find((f) => f.subject.toLowerCase() === 'stripe' && f.predicate === 'pricing');
   const resendFact = allFacts.find((f) => f.subject.toLowerCase() === 'resend' && f.predicate === 'pricing');
 
-  console.assert(stripeFact !== undefined, 'System must autonomously extract Stripe pricing fact');
-  console.assert(stripeFact?.validFrom === monthAgoDate.toISOString(), 'Fact validFrom must match 1-month-ago timestamp');
-  console.assert(resendFact !== undefined, 'System must autonomously extract Resend pricing fact');
-  console.assert(resendFact?.validFrom === weekAgoDate.toISOString(), 'Fact validFrom must match 1-week-ago timestamp');
+  assertStrict(stripeFact !== undefined, 'System must autonomously extract Stripe pricing fact');
+  assertStrict(stripeFact?.validFrom === monthAgoDate.toISOString(), 'Fact validFrom must match 1-month-ago timestamp');
+  assertStrict(resendFact !== undefined, 'System must autonomously extract Resend pricing fact');
+  assertStrict(resendFact?.validFrom === weekAgoDate.toISOString(), 'Fact validFrom must match 1-week-ago timestamp');
   console.log(`✓ Autonomous Tri-Temporal Facts verified: Stripe -> ${stripeFact?.object} (validFrom: ${stripeFact?.validFrom}), Resend -> ${resendFact?.object} (validFrom: ${resendFact?.validFrom})`);
 
   // Verify episodic store metadata
   const session1Entries = await brainVault.episodic.getSessionHistory(session1Id, testUserId);
-  console.assert(session1Entries.length === 2, 'Session 1 must have 2 entries');
-  console.assert(
+  assertStrict(session1Entries.length === 2, 'Session 1 must have 2 entries');
+  assertStrict(
     session1Entries[1].metadata?.entities?.some((e) => e.toLowerCase() === 'stripe'),
     'Assistant entry must contain Stripe in metadata.entities'
   );
@@ -132,8 +139,8 @@ async function runAutonomousRecallTest() {
   
   // Verify TemporalParser directly first
   const parsedAnchor = TemporalParser.parse(monthQuery, refDate);
-  console.assert(parsedAnchor !== null, 'Should parse "One month ago" anchor');
-  console.assert(parsedAnchor?.anchorType === 'relative', 'Should be relative anchor');
+  assertStrict(parsedAnchor !== null, 'Should parse "One month ago" anchor');
+  assertStrict(parsedAnchor?.anchorType === 'relative', 'Should be relative anchor');
   console.log(`✓ Temporal Anchor resolved: "${parsedAnchor?.label}" [${parsedAnchor?.startDate} to ${parsedAnchor?.endDate}]`);
 
   // Run full AgentOrchestrator flow
@@ -155,10 +162,10 @@ async function runAutonomousRecallTest() {
   const recallTrace = recallScratchpad.find((s) => s.includes('Recalled') && s.includes('episodic'));
   const entityTrace = recallScratchpad.find((s) => s.includes('Deterministic Entity Profile Injection'));
 
-  console.assert(anchorTrace !== undefined, 'Trace must show resolved temporal anchor');
-  console.assert(recallTrace !== undefined, 'Trace must show historical turn recalled from episodic store');
-  console.assert(entityTrace !== undefined && entityTrace.includes('Stripe'), 'Trace must show Stripe profile injected');
-  console.assert(recallTokens.length > 50, 'Response should be streamed');
+  assertStrict(anchorTrace !== undefined, 'Trace must show resolved temporal anchor');
+  assertStrict(recallTrace !== undefined, 'Trace must show historical turn recalled from episodic store');
+  assertStrict(entityTrace !== undefined && entityTrace.includes('Stripe'), 'Trace must show Stripe profile injected');
+  assertStrict(recallTokens.length > 50, 'Response should be streamed');
   console.log(`✓ 1-Month Recall successful: Retrieved baseline conversation from 30 days ago, injected self-generated Stripe & LemonSqueezy profiles, performed live diff search, streamed ${recallTokens.length} chars response.`);
 
   // =========================================================================
@@ -186,7 +193,7 @@ async function runAutonomousRecallTest() {
   });
 
   const weekEntityTrace = weekScratchpad.find((s) => s.includes('Deterministic Entity Profile Injection'));
-  console.assert(weekEntityTrace !== undefined && weekEntityTrace.includes('Resend'), 'Should inject Resend profile');
+  assertStrict(weekEntityTrace !== undefined && weekEntityTrace.includes('Resend'), 'Should inject Resend profile');
   console.log(`✓ 1-Week Recall successful: Recalled 7-day-old email services conversation, injected self-generated Resend & Postmark profiles, streamed ${weekTokens.length} chars response.`);
 
   // =========================================================================
@@ -208,7 +215,7 @@ async function runAutonomousRecallTest() {
     onDone: () => {},
   });
 
-  console.assert(followUpTokens.toLowerCase().includes('stripe') || followUpTokens.toLowerCase().includes('2.9%'), 'Follow-up must correctly reference Stripe from the conversation');
+  assertStrict(followUpTokens.toLowerCase().includes('stripe') || followUpTokens.toLowerCase().includes('2.9%'), 'Follow-up must correctly reference Stripe from the conversation');
   console.log(`✓ Multi-turn coreference verified: Seamless follow-up answered using recalled context.`);
 
   console.log('\n🎉 ALL AUTONOMOUS EXTRACTION & CROSS-SESSION RECALL TESTS PASSED WITH 100% SUCCESS!');

@@ -58,10 +58,11 @@ export class TemporalParser {
 
   /**
    * Parse temporal intent from prompt relative to a reference date
+   * Uses UTC arithmetic to guarantee 100% deterministic calendar dates across all host timezones.
    */
   public static parse(prompt: string, referenceDate: Date = new Date()): TemporalRange | null {
     const text = prompt.toLowerCase();
-    const refYear = referenceDate.getFullYear();
+    const refYear = referenceDate.getUTCFullYear();
 
     // 1. ISO format: "2026-11-03" or "2026/11/03"
     const isoMatch = text.match(/\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b/);
@@ -71,11 +72,13 @@ export class TemporalParser {
       const d = parseInt(isoMatch[3], 10);
       const target = new Date(Date.UTC(y, m, d, 0, 0, 0, 0));
       const endOfDay = new Date(Date.UTC(y, m, d, 23, 59, 59, 999));
+      const dateString = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       return {
         startDate: target.toISOString(),
         endDate: endOfDay.toISOString(),
         label: `${d} ${Object.keys(this.MONTHS).find(k => this.MONTHS[k] === m) || m} ${y}`,
         anchorType: 'absolute',
+        dateString,
       };
     }
 
@@ -98,11 +101,13 @@ export class TemporalParser {
       if (month !== undefined && day >= 1 && day <= 31) {
         const target = new Date(Date.UTC(refYear, month, day, 0, 0, 0, 0));
         const endOfDay = new Date(Date.UTC(refYear, month, day, 23, 59, 59, 999));
+        const dateString = `${refYear}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         return {
           startDate: target.toISOString(),
           endDate: endOfDay.toISOString(),
           label: `${day} ${monthStr.charAt(0).toUpperCase() + monthStr.slice(1)} ${refYear}`,
           anchorType: 'absolute',
+          dateString,
         };
       }
     }
@@ -116,23 +121,32 @@ export class TemporalParser {
         const val = monthsMatch[1].toLowerCase();
         numMonths = (val === 'last' || val === 'a') ? 1 : this.parseNumber(val);
       }
-      const target = new Date(referenceDate);
-      target.setDate(referenceDate.getDate() - (numMonths * 30));
-      target.setHours(0, 0, 0, 0);
-
-      const startWindow = new Date(target);
-      startWindow.setDate(target.getDate() - 3); // Allow a small window around 1 month ago
-      startWindow.setHours(0, 0, 0, 0);
-
-      const endWindow = new Date(target);
-      endWindow.setDate(target.getDate() + 3);
-      endWindow.setHours(23, 59, 59, 999);
+      const target = new Date(Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth() - numMonths,
+        referenceDate.getUTCDate(),
+        0, 0, 0, 0
+      ));
+      const startWindow = new Date(Date.UTC(
+        target.getUTCFullYear(),
+        target.getUTCMonth(),
+        target.getUTCDate() - 3,
+        0, 0, 0, 0
+      ));
+      const endWindow = new Date(Date.UTC(
+        target.getUTCFullYear(),
+        target.getUTCMonth(),
+        target.getUTCDate() + 3,
+        23, 59, 59, 999
+      ));
+      const dateString = target.toISOString().split('T')[0];
 
       return {
         startDate: startWindow.toISOString(),
         endDate: endWindow.toISOString(),
-        label: `${numMonths} month(s) ago (${target.toISOString().split('T')[0]})`,
+        label: `${numMonths} month(s) ago (${dateString})`,
         anchorType: 'relative',
+        dateString,
       };
     }
 
@@ -145,30 +159,39 @@ export class TemporalParser {
         const val = weeksMatch[1].toLowerCase();
         numWeeks = (val === 'last' || val === 'a') ? 1 : this.parseNumber(val);
       }
-      const target = new Date(referenceDate);
-      target.setDate(referenceDate.getDate() - (numWeeks * 7));
-
+      let targetDaysOffset = numWeeks * 7;
       if (weeksMatch[2]) {
-        // Specific weekday in that target week
         const targetDay = this.DAYS_OF_WEEK[weeksMatch[2].toLowerCase()];
-        const diff = target.getDay() - targetDay;
-        target.setDate(target.getDate() - diff);
+        const currentDay = referenceDate.getUTCDay();
+        const diff = currentDay - targetDay;
+        targetDaysOffset = (numWeeks * 7) + diff;
       }
-
-      target.setHours(0, 0, 0, 0);
-      const startWindow = new Date(target);
-      startWindow.setDate(target.getDate() - 1);
-      startWindow.setHours(0, 0, 0, 0);
-
-      const endWindow = new Date(target);
-      endWindow.setDate(target.getDate() + 1);
-      endWindow.setHours(23, 59, 59, 999);
+      const target = new Date(Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate() - targetDaysOffset,
+        0, 0, 0, 0
+      ));
+      const startWindow = new Date(Date.UTC(
+        target.getUTCFullYear(),
+        target.getUTCMonth(),
+        target.getUTCDate() - 1,
+        0, 0, 0, 0
+      ));
+      const endWindow = new Date(Date.UTC(
+        target.getUTCFullYear(),
+        target.getUTCMonth(),
+        target.getUTCDate() + 1,
+        23, 59, 59, 999
+      ));
+      const dateString = target.toISOString().split('T')[0];
 
       return {
         startDate: startWindow.toISOString(),
         endDate: endWindow.toISOString(),
-        label: `${numWeeks} week(s) ago (${target.toISOString().split('T')[0]})`,
+        label: `${numWeeks} week(s) ago (${dateString})`,
         anchorType: 'relative',
+        dateString,
       };
     }
 
@@ -177,43 +200,60 @@ export class TemporalParser {
     const daysAgoMatch = text.match(daysAgoRegex);
     if (daysAgoMatch) {
       const days = this.parseNumber(daysAgoMatch[1]);
-      const target = new Date(referenceDate);
-      target.setDate(referenceDate.getDate() - days);
-      target.setHours(0, 0, 0, 0);
-
-      const endOfDay = new Date(target);
-      endOfDay.setHours(23, 59, 59, 999);
+      const target = new Date(Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate() - days,
+        0, 0, 0, 0
+      ));
+      const endOfDay = new Date(Date.UTC(
+        target.getUTCFullYear(),
+        target.getUTCMonth(),
+        target.getUTCDate(),
+        23, 59, 59, 999
+      ));
+      const dateString = target.toISOString().split('T')[0];
 
       return {
         startDate: target.toISOString(),
         endDate: endOfDay.toISOString(),
-        label: `${days} day(s) ago (${target.toISOString().split('T')[0]})`,
+        label: `${days} day(s) ago (${dateString})`,
         anchorType: 'relative',
+        dateString,
       };
     }
 
-    // 5. "yesterday"
+    // 6. "yesterday"
     if (/\byesterday\b/i.test(text)) {
-      const target = new Date(referenceDate);
-      target.setDate(referenceDate.getDate() - 1);
-      target.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(target);
-      endOfDay.setHours(23, 59, 59, 999);
+      const target = new Date(Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate() - 1,
+        0, 0, 0, 0
+      ));
+      const endOfDay = new Date(Date.UTC(
+        target.getUTCFullYear(),
+        target.getUTCMonth(),
+        target.getUTCDate(),
+        23, 59, 59, 999
+      ));
+      const dateString = target.toISOString().split('T')[0];
 
       return {
         startDate: target.toISOString(),
         endDate: endOfDay.toISOString(),
-        label: `Yesterday (${target.toISOString().split('T')[0]})`,
+        label: `Yesterday (${dateString})`,
         anchorType: 'relative',
+        dateString,
       };
     }
 
-    // 6. Relative Days: "last Tuesday", "last Monday", etc.
+    // 7. Relative Days: "last Tuesday", "last Monday", etc.
     const lastDayRegex = /\blast\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/i;
     const lastDayMatch = text.match(lastDayRegex);
     if (lastDayMatch) {
       const targetDay = this.DAYS_OF_WEEK[lastDayMatch[1].toLowerCase()];
-      const currentDay = referenceDate.getDay();
+      const currentDay = referenceDate.getUTCDay();
       
       let diff = currentDay - targetDay;
       if (diff <= 0) {
@@ -223,27 +263,35 @@ export class TemporalParser {
         diff += 7;
       }
 
-      const target = new Date(referenceDate);
-      target.setDate(referenceDate.getDate() - diff);
-      target.setHours(0, 0, 0, 0);
-
-      const endOfDay = new Date(target);
-      endOfDay.setHours(23, 59, 59, 999);
+      const target = new Date(Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate() - diff,
+        0, 0, 0, 0
+      ));
+      const endOfDay = new Date(Date.UTC(
+        target.getUTCFullYear(),
+        target.getUTCMonth(),
+        target.getUTCDate(),
+        23, 59, 59, 999
+      ));
+      const dateString = target.toISOString().split('T')[0];
 
       return {
         startDate: target.toISOString(),
         endDate: endOfDay.toISOString(),
-        label: `Last ${lastDayMatch[1]} (${target.toISOString().split('T')[0]})`,
+        label: `Last ${lastDayMatch[1]} (${dateString})`,
         anchorType: 'relative',
+        dateString,
       };
     }
 
-    // 7. "on Monday", "this Monday", "on Tuesday"
+    // 8. "on Monday", "this Monday", "on Tuesday"
     const onDayRegex = /\b(?:on|this)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat)\b/i;
     const onDayMatch = text.match(onDayRegex);
     if (onDayMatch) {
       const targetDay = this.DAYS_OF_WEEK[onDayMatch[1].toLowerCase()];
-      const currentDay = referenceDate.getDay();
+      const currentDay = referenceDate.getUTCDay();
       
       let diff = currentDay - targetDay;
       if (diff < 0) {
@@ -254,55 +302,75 @@ export class TemporalParser {
         diff = 7;
       }
 
-      const target = new Date(referenceDate);
-      target.setDate(referenceDate.getDate() - diff);
-      target.setHours(0, 0, 0, 0);
-
-      const endOfDay = new Date(target);
-      endOfDay.setHours(23, 59, 59, 999);
+      const target = new Date(Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate() - diff,
+        0, 0, 0, 0
+      ));
+      const endOfDay = new Date(Date.UTC(
+        target.getUTCFullYear(),
+        target.getUTCMonth(),
+        target.getUTCDate(),
+        23, 59, 59, 999
+      ));
+      const dateString = target.toISOString().split('T')[0];
 
       return {
         startDate: target.toISOString(),
         endDate: endOfDay.toISOString(),
-        label: `${onDayMatch[1]} (${target.toISOString().split('T')[0]})`,
+        label: `${onDayMatch[1]} (${dateString})`,
         anchorType: 'relative',
+        dateString,
       };
     }
 
-    // 8. "earlier this week"
+    // 9. "earlier this week"
     if (/\bearlier\s+this\s+week\b/i.test(text)) {
-      const currentDay = referenceDate.getDay();
+      const currentDay = referenceDate.getUTCDay();
       const daysToMon = currentDay === 0 ? 6 : currentDay - 1;
-      const target = new Date(referenceDate);
-      target.setDate(referenceDate.getDate() - Math.max(1, daysToMon));
-      target.setHours(0, 0, 0, 0);
+      const target = new Date(Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate() - Math.max(1, daysToMon),
+        0, 0, 0, 0
+      ));
+      const dateString = target.toISOString().split('T')[0];
 
       return {
         startDate: target.toISOString(),
         endDate: referenceDate.toISOString(),
-        label: `Earlier this week (since ${target.toISOString().split('T')[0]})`,
+        label: `Earlier this week (since ${dateString})`,
         anchorType: 'relative',
+        dateString,
       };
     }
 
-    // 9. "over the weekend"
+    // 10. "over the weekend"
     if (/\b(?:over\s+the\s+weekend|this\s+weekend|last\s+weekend)\b/i.test(text)) {
-      const currentDay = referenceDate.getDay();
-      // Most recent Saturday
+      const currentDay = referenceDate.getUTCDay();
       const daysToSat = (currentDay + 1) % 7;
-      const sat = new Date(referenceDate);
-      sat.setDate(referenceDate.getDate() - (daysToSat === 0 ? 7 : daysToSat));
-      sat.setHours(0, 0, 0, 0);
-
-      const sun = new Date(sat);
-      sun.setDate(sat.getDate() + 1);
-      sun.setHours(23, 59, 59, 999);
+      const sat = new Date(Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate() - (daysToSat === 0 ? 7 : daysToSat),
+        0, 0, 0, 0
+      ));
+      const sun = new Date(Date.UTC(
+        sat.getUTCFullYear(),
+        sat.getUTCMonth(),
+        sat.getUTCDate() + 1,
+        23, 59, 59, 999
+      ));
+      const satStr = sat.toISOString().split('T')[0];
+      const sunStr = sun.toISOString().split('T')[0];
 
       return {
         startDate: sat.toISOString(),
         endDate: sun.toISOString(),
-        label: `Weekend (${sat.toISOString().split('T')[0]} - ${sun.toISOString().split('T')[0]})`,
+        label: `Weekend (${satStr} - ${sunStr})`,
         anchorType: 'relative',
+        dateString: satStr,
       };
     }
 

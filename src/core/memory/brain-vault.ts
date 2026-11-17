@@ -1,16 +1,75 @@
-import { EpisodicStore } from './episodic-store';
+import { EpisodicStore, isEpisodicUserMatch } from './episodic-store';
 import { FactStore } from './fact-store';
 import { EntityProfileStore } from './entity-profiles';
 import { SessionStore } from './session-store';
 import { TemporalParser } from './temporal-parser';
 import { KnowledgeExtractor } from './knowledge-extractor';
+import { AsyncFactExtractor } from './async-fact-extractor';
 import { BrainVaultContext, BrainVaultView, EntityProfile, FactEntry, MemoryEntry } from '../types';
 import { seedBenchmarkScenarios } from './seed-scenarios';
 import { getDefaultStorageDir } from './storage-dir';
 
+interface SemanticDomainEntry {
+  triggers: RegExp;
+  expandedKeywords: string[];
+  candidateEntities: string[];
+}
+
+const SEMANTIC_DOMAIN_MAP: SemanticDomainEntry[] = [
+  {
+    triggers: /\b(crm|customer relationship|sales pipeline|sales reps|sales team|sales software|account executives|sales tools)\b/i,
+    expandedKeywords: ['crm', 'sales', 'shortlist', 'pipeline', 'hubspot', 'pipedrive', 'zoho', 'salesforce', 'close', 'freshsales', 'folk', 'attio', 'copper'],
+    candidateEntities: ['HubSpot', 'Pipedrive', 'Zoho CRM', 'Close', 'Salesforce', 'Freshsales', 'Folk', 'Attio', 'Copper', 'Capsule', 'Apollo.io', 'ZoomInfo', 'Salesloft', 'Outreach'],
+  },
+  {
+    triggers: /\b(postgres|postgresql|sql database|relational database|managed postgres|postgres hosting|serverless database)\b/i,
+    expandedKeywords: ['postgres', 'postgresql', 'database', 'hosting', 'supabase', 'neon', 'aurora', 'crunchy bridge', 'timescale', 'sql'],
+    candidateEntities: ['Supabase', 'Neon', 'AWS Aurora Serverless', 'Crunchy Bridge', 'TimescaleDB', 'PostgreSQL'],
+  },
+  {
+    triggers: /\b(vector|vector database|embedding|embeddings|similarity search|semantic search|rag agent|vector db)\b/i,
+    expandedKeywords: ['vector', 'pinecone', 'qdrant', 'milvus', 'weaviate', 'chroma', 'vespa', 'rag', 'embedding'],
+    candidateEntities: ['Pinecone', 'Qdrant', 'Milvus', 'Weaviate', 'Chroma', 'Vespa'],
+  },
+  {
+    triggers: /\b(orm|object relational mapper|schema migration|database client|sql client)\b/i,
+    expandedKeywords: ['orm', 'prisma', 'drizzle', 'typeorm', 'kysely', 'sequelize'],
+    candidateEntities: ['Prisma ORM', 'Drizzle ORM', 'Prisma', 'Drizzle', 'TypeORM', 'Kysely'],
+  },
+  {
+    triggers: /\b(hosting|frontend hosting|edge compute|serverless hosting|jamstack|paas|cloud deployment)\b/i,
+    expandedKeywords: ['hosting', 'vercel', 'netlify', 'render', 'railway', 'fly.io', 'koyeb', 'cloudflare workers', 'aws lambda', 'digitalocean', 'heroku'],
+    candidateEntities: ['Vercel', 'Netlify', 'Render', 'Railway', 'Fly.io', 'Koyeb', 'Cloudflare Workers', 'AWS Lambda', 'DigitalOcean', 'Heroku', 'Northflank', 'Deno Deploy'],
+  },
+  {
+    triggers: /\b(email|transactional email|email delivery|send emails|inbox delivery|smtp)\b/i,
+    expandedKeywords: ['email', 'resend', 'postmark', 'sendgrid', 'brevo', 'mailgun'],
+    candidateEntities: ['Resend', 'Postmark', 'SendGrid', 'Brevo'],
+  },
+  {
+    triggers: /\b(payment|payment gateway|merchant of record|checkout|card fee|transaction fee|billing)\b/i,
+    expandedKeywords: ['payment', 'stripe', 'lemonsqueezy', 'paddle', 'gateway', 'fee'],
+    candidateEntities: ['Stripe', 'LemonSqueezy', 'Paddle'],
+  },
+  {
+    triggers: /\b(speech|transcription|voice ai|text to speech|tts|audio transcription)\b/i,
+    expandedKeywords: ['speech', 'transcription', 'elevenlabs', 'deepgram', 'whisper', 'voice'],
+    candidateEntities: ['ElevenLabs', 'Deepgram'],
+  },
+  {
+    triggers: /\b(analytics|event tracking|feature flags|session replay|product analytics)\b/i,
+    expandedKeywords: ['analytics', 'posthog', 'mixpanel', 'amplitude', 'tracking'],
+    candidateEntities: ['PostHog', 'Mixpanel'],
+  },
+  {
+    triggers: /\b(cache|caching|key value|redis cache|serverless cache)\b/i,
+    expandedKeywords: ['cache', 'redis', 'memcached', 'upstash', 'momento'],
+    candidateEntities: ['Redis', 'Memcached', 'Upstash Redis', 'Momento'],
+  },
+];
+
 /**
- * Brain-Vault Memory Engine (TypeScript Port)
- * Direct architectural implementation of Brain-Vault's Multi-View Retrieval (retrieval_service_v2.py)
+ * Multi-View Memory System Engine
  * Supports:
  * - Episodic View (time-based memory log)
  * - State View (current truth / active facts)
@@ -19,7 +78,7 @@ import { getDefaultStorageDir } from './storage-dir';
  * - Pre-invocation Proactive Recall
  * - Persistent User-Scoped Chat Sessions
  */
-export class BrainVaultEngine {
+export class MemorySystemEngine {
   public episodic: EpisodicStore;
   public facts: FactStore;
   public entities: EntityProfileStore;
@@ -37,13 +96,27 @@ export class BrainVaultEngine {
   public async init(referenceDate: Date = new Date()): Promise<void> {
     if (this.isInitialized) return;
     await this.sessions.init();
-    // Auto-seed benchmark scenarios if storage is empty
+    // Allow explicitly skipping auto-seeding if SEED_BENCHMARK is disabled
+    const shouldSeed = process.env.AUTO_SEED_BENCHMARK !== 'false';
     const allMemories = await this.episodic.getAll();
-    if (allMemories.length === 0) {
+    if (allMemories.length === 0 && shouldSeed) {
       await seedBenchmarkScenarios(this.episodic, this.facts, this.entities, referenceDate);
       await this.sessions.seedBenchmarkSessions('default_user', referenceDate);
     }
     this.isInitialized = true;
+  }
+
+  public async seedBenchmark(referenceDate: Date = new Date()): Promise<void> {
+    await this.sessions.init();
+    await seedBenchmarkScenarios(this.episodic, this.facts, this.entities, referenceDate);
+    await this.sessions.seedBenchmarkSessions('default_user', referenceDate);
+  }
+
+  public async clearMemory(): Promise<void> {
+    await this.episodic.clear();
+    await this.facts.clear();
+    await this.entities.clear();
+    this.isInitialized = false;
   }
 
   /**
@@ -67,11 +140,30 @@ export class BrainVaultEngine {
     let activeFacts: FactEntry[] = [];
     let matchedProfiles: EntityProfile[] = [];
 
-    // 2. Deterministic Entity Profile Injection (Bypasses fuzzy search)
+    // 2. Deterministic Entity Profile Injection
     // First match against prompt text directly
-    matchedProfiles = await this.entities.matchProfiles(prompt);
+    matchedProfiles = await this.entities.matchProfiles(prompt, userId);
+
+    // Semantic Concept & Domain Expansion (defeats lexical blindness)
+    const semanticKeywords: string[] = [];
+    for (const domain of SEMANTIC_DOMAIN_MAP) {
+      if (domain.triggers.test(prompt)) {
+        semanticKeywords.push(...domain.expandedKeywords);
+        for (const candidate of domain.candidateEntities) {
+          const profiles = await this.entities.matchProfiles(candidate, userId);
+          for (const p of profiles) {
+            if (!matchedProfiles.some((existing) => existing.id === p.id)) {
+              matchedProfiles.push(p);
+            }
+          }
+        }
+      }
+    }
 
     // 3. Multi-View Routing
+    let hasZeroMatchingHistory = false;
+    const isDateRecallQuery = /\b(what did i ask|what was my question|what did we discuss|what did i say|what did we talk about|did i ask)\b/i.test(prompt);
+
     if (view === 'episodic' || view === 'auto') {
       if (temporalAnchor) {
         episodicMemories = await this.episodic.getByTemporalRange(temporalAnchor, userId);
@@ -85,56 +177,69 @@ export class BrainVaultEngine {
             endDate: new Date(endMs).toISOString(),
             label: temporalAnchor.label,
             anchorType: temporalAnchor.anchorType,
+            dateString: temporalAnchor.dateString,
           }, userId);
+        }
+
+        // If user specifically asked about their past question on this date and nothing exists:
+        if (episodicMemories.length === 0 && isDateRecallQuery) {
+          hasZeroMatchingHistory = true;
         }
       }
       
-      // Dynamic Salient Keyword & Cross-Chat Memory Search:
-      // Search episodic store for relevant words from user prompt
-      const stopwords = new Set([
-        'what', 'which', 'where', 'when', 'who', 'how', 'why', 'did', 'does', 'have', 'has',
-        'asked', 'about', 'tell', 'show', 'pricing', 'changed', 'since', 'then', 'today',
-        'there', 'their', 'they', 'with', 'from', 'that', 'this', 'last', 'week', 'days',
-        'the', 'and', 'for', 'our', 'use', 'just', 'say', 'like', 'mention', 'pick', 'favorite'
-      ]);
+      // Dynamic Salient Keyword Search only if this is NOT an empty date-inquiry
+      if (!hasZeroMatchingHistory) {
+        const stopwords = new Set([
+          'what', 'which', 'where', 'when', 'who', 'how', 'why', 'did', 'does', 'have', 'has',
+          'asked', 'about', 'tell', 'show', 'pricing', 'changed', 'since', 'then', 'today',
+          'there', 'their', 'they', 'with', 'from', 'that', 'this', 'last', 'week', 'days',
+          'the', 'and', 'for', 'our', 'use', 'just', 'say', 'like', 'mention', 'pick', 'favorite',
+          'price', 'cost', 'stock', 'stocks', 'tool', 'tools', 'service', 'services'
+        ]);
 
-      const words = prompt
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .split(/\s+/)
-        .filter((w) => w.length >= 3 && !stopwords.has(w));
+        const words = Array.from(
+          new Set(
+            prompt
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, ' ')
+              .split(/\s+/)
+              .filter((w) => w.length >= 3 && !stopwords.has(w))
+          )
+        ).slice(0, 6);
 
-      for (const w of words) {
-        const found = await this.episodic.searchByKeyword(w, 5, userId);
-        for (const mem of found) {
-          if (!episodicMemories.some((m) => m.id === mem.id)) {
-            episodicMemories.push(mem);
+        const searchTokens = Array.from(new Set([...words, ...semanticKeywords.slice(0, 4)]));
+
+        for (const w of searchTokens) {
+          const found = await this.episodic.searchByKeyword(w, 5, userId);
+          for (const mem of found) {
+            if (!episodicMemories.some((m) => m.id === mem.id)) {
+              episodicMemories.push(mem);
+            }
+          }
+          if (episodicMemories.length >= 10) break;
+        }
+
+        // If user is asking about prior discussions/preferences ("what did I say", "which ORM do we use", "what is my favorite")
+        const isRecallIntent = /(what|which|who|where)\s+(did|do|was)\s+(i|we|you)|(favorite|remember|preference|stack|choice|decision|say|said|tell|told|use|pick)/i.test(prompt);
+        if (isRecallIntent && episodicMemories.length < 5) {
+          const allUserEntries = (await this.episodic.getAll())
+            .filter((e) => isEpisodicUserMatch(e.userId, userId))
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 10);
+          for (const mem of allUserEntries) {
+            if (!episodicMemories.some((m) => m.id === mem.id)) {
+              episodicMemories.push(mem);
+            }
           }
         }
-        if (episodicMemories.length >= 10) break;
       }
 
-      // If user is asking about prior discussions/preferences ("what did I say", "which ORM do we use", "what is my favorite")
-      // pull recent user conversational turns across previous sessions
-      const isRecallIntent = /(what|which|who|where)\s+(did|do|was)\s+(i|we|you)|(favorite|remember|preference|stack|choice|decision|say|said|tell|told|use|pick)/i.test(prompt);
-      if (isRecallIntent && episodicMemories.length < 5) {
-        const allUserEntries = (await this.episodic.getAll())
-          .filter((e) => (!userId || e.userId === userId || e.userId === 'default_user'))
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 10);
-        for (const mem of allUserEntries) {
-          if (!episodicMemories.some((m) => m.id === mem.id)) {
-            episodicMemories.push(mem);
-          }
-        }
-      }
-
-      // If we found episodic memories, dynamically inject entity profiles mentioned inside them
-      if (episodicMemories.length > 0) {
+      // Only inject entity profiles from episodic memories if there is an explicit temporal anchor OR delta intent
+      if (episodicMemories.length > 0 && (temporalAnchor || hasDeltaIntent)) {
         for (const mem of episodicMemories) {
           if (mem.metadata?.entities) {
             for (const entName of mem.metadata.entities) {
-              const profiles = await this.entities.matchProfiles(entName);
+              const profiles = await this.entities.matchProfiles(entName, userId);
               for (const p of profiles) {
                 if (!matchedProfiles.some((existing) => existing.id === p.id)) {
                   matchedProfiles.push(p);
@@ -147,7 +252,7 @@ export class BrainVaultEngine {
     }
 
     if (view === 'state' || view === 'auto') {
-      activeFacts = await this.facts.getActiveFacts();
+      activeFacts = await this.facts.getActiveFacts(undefined, userId);
       // Filter active facts relevant to matched profiles or prompt keywords
       if (matchedProfiles.length > 0) {
         const entityNames = new Set(matchedProfiles.map((p) => p.entityName.toLowerCase()));
@@ -161,9 +266,7 @@ export class BrainVaultEngine {
           promptLower.includes(f.predicate.toLowerCase()) ||
           promptLower.includes(f.object.toLowerCase())
         );
-        if (relevantFacts.length > 0) {
-          activeFacts = relevantFacts;
-        }
+        activeFacts = relevantFacts;
       }
     }
 
@@ -171,7 +274,10 @@ export class BrainVaultEngine {
     let contextParts: string[] = [];
 
     if (temporalAnchor) {
-      contextParts.push(`[TEMPORAL ANCHOR DETECTED: ${temporalAnchor.label}]`);
+      contextParts.push(`[TEMPORAL ANCHOR DETECTED: ${temporalAnchor.label} (${temporalAnchor.anchorType})]`);
+      if (hasZeroMatchingHistory) {
+        contextParts.push(`[TEMPORAL AUDIT: ZERO historical turns found in memory ledger for ${temporalAnchor.label}. Do NOT invent past topics.]`);
+      }
     }
 
     if (episodicMemories.length > 0) {
@@ -188,16 +294,17 @@ export class BrainVaultEngine {
     }
 
     if (matchedProfiles.length > 0) {
-      contextParts.push('### Deterministic Entity Profiles (Shortlisted / Baseline State):');
+      contextParts.push('### Structured Claim Snapshots (Baseline State to Compare Against):');
       for (const prof of matchedProfiles) {
-        contextParts.push(`- **${prof.entityName}** (${prof.category}): ${JSON.stringify(prof.profileData)}`);
+        const baselinePricing = prof.profileData?.pricing || 'Standard Tier';
+        contextParts.push(`- [CLAIM SNAPSHOT] Entity: "${prof.entityName}" | Category: ${prof.category} | Baseline: "${baselinePricing}" | Profile: ${JSON.stringify(prof.profileData)}`);
       }
     }
 
     if (activeFacts.length > 0) {
-      contextParts.push('### Active Brain-Vault Facts:');
+      contextParts.push('### Active Ground Truth Facts:');
       for (const fact of activeFacts) {
-        contextParts.push(`- ${fact.subject} -> ${fact.predicate}: "${fact.object}" (valid from: ${fact.validFrom})`);
+        contextParts.push(`- [FACT SNAPSHOT] ${fact.subject} -> ${fact.predicate}: "${fact.object}" (Established: ${fact.validFrom})`);
       }
     }
 
@@ -209,6 +316,7 @@ export class BrainVaultEngine {
       entityProfiles: matchedProfiles,
       temporalAnchor: temporalAnchor || undefined,
       injectedContextString,
+      hasZeroMatchingHistory,
     };
   }
 
@@ -223,7 +331,8 @@ export class BrainVaultEngine {
     assistantResponse: string,
     citations?: any[],
     scratchpad?: string[],
-    customTimestamp?: string
+    customTimestamp?: string,
+    durationMs?: number
   ): Promise<void> {
     const nowIso = customTimestamp || new Date().toISOString();
 
@@ -249,6 +358,7 @@ export class BrainVaultEngine {
       metadata: {
         citations,
         scratchpad,
+        durationMs,
         entities: extracted.entities,
         topics: extracted.topics,
       },
@@ -266,6 +376,27 @@ export class BrainVaultEngine {
 
     // 6. Update session metadata and auto-title
     await this.sessions.touchSession(sessionId, userId, userQuery, userQuery);
+
+    // 7. Background Cheap LLM Fact Distillation (Dual-Speed Cold Path)
+    // Non-blocking fire-and-forget background worker; never delays response completion
+    if (process.env.DISABLE_ASYNC_FACT_EXTRACTION !== 'true') {
+      AsyncFactExtractor.distillTurnAsync({
+        userId,
+        userQuery,
+        assistantResponse,
+        timestamp: nowIso,
+        onExtracted: async ({ profiles, facts }) => {
+          for (const profile of profiles) {
+            await this.entities.upsertProfile(profile);
+          }
+          for (const fact of facts) {
+            await this.facts.addFact(fact);
+          }
+        },
+      }).catch((err) => {
+        console.warn(`[BrainVault] Background fact distillation notice: ${err?.message || err}`);
+      });
+    }
   }
 
   /**
@@ -280,4 +411,9 @@ export class BrainVaultEngine {
   }
 }
 
-export const brainVault = new BrainVaultEngine();
+export const memorySystem = new MemorySystemEngine();
+
+// Aliases for backward compatibility
+export const BrainVaultEngine = MemorySystemEngine;
+export const BrainVault = MemorySystemEngine;
+export const brainVault = memorySystem;

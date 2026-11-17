@@ -1,13 +1,14 @@
 /**
  * Core Domain Types
- * Minimi Web Search Agent with Brain-Vault Memory & AgentBridge Governance
+ * Minimi Web Search Agent (minimi-chat-agent) with Multi-View Memory System & AgentBridge Governance
  */
 
 // ==========================================
-// Brain-Vault Memory Types
+// Memory System Types
 // ==========================================
 
-export type BrainVaultView = 'episodic' | 'state' | 'semantic' | 'auto';
+export type MemoryView = 'episodic' | 'state' | 'semantic' | 'auto';
+export type BrainVaultView = MemoryView; // Alias for backward compatibility
 
 export interface MemoryEntry {
   id: string;
@@ -22,6 +23,7 @@ export interface MemoryEntry {
     pricingMentioned?: Record<string, string>;
     citations?: SourceCitation[];
     scratchpad?: string[];
+    durationMs?: number;
   };
 }
 
@@ -52,17 +54,20 @@ export interface EntityProfile {
 export interface TemporalRange {
   startDate: string; // ISO 8601
   endDate: string;   // ISO 8601
-  label: string;     // e.g. "Last Tuesday (2026-11-04)"
+  label: string;     // e.g. "Last Tuesday (2026-11-10)"
   anchorType: 'relative' | 'absolute' | 'none';
+  dateString?: string; // YYYY-MM-DD
 }
 
-export interface BrainVaultContext {
+export interface MemorySystemContext {
   episodicMemories: MemoryEntry[];
   activeFacts: FactEntry[];
   entityProfiles: EntityProfile[];
   temporalAnchor?: TemporalRange;
   injectedContextString: string;
+  hasZeroMatchingHistory?: boolean;
 }
+export type BrainVaultContext = MemorySystemContext; // Alias for backward compatibility
 
 // ==========================================
 // Web Search Tool Types
@@ -133,6 +138,9 @@ export type StreamEventType =
   | 'citations'
   | 'plain_text_answer'
   | 'agent_error'
+  | 'agent_paused'
+  | 'agent_resumed'
+  | 'agent_terminated'
   | 'error'
   | 'done';
 

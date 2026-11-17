@@ -26,7 +26,7 @@ async function runPriorityTest() {
     onToken: (t) => { chatAResponse += t; },
     onCitations: () => {},
     onError: (err) => console.error('  [Chat A Error]:', err),
-    onDone: () => console.log('  ✓ Chat A Turn 1 completed and indexed into Brain-Vault.\n'),
+    onDone: () => console.log('  ✓ Chat A Turn 1 completed and indexed into Memory System.\n'),
   });
 
   // ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ async function runPriorityTest() {
   }
 
   // ---------------------------------------------------------------------------
-  // STEP 4: Test Priority 2 (Cross-Chat Brain-Vault Memory Fallback)
+  // STEP 4: Test Priority 2 (Cross-Chat Memory System Memory Fallback)
   // User asks in Chat B about Database, which was NEVER mentioned in Chat B, only Chat A!
   // ---------------------------------------------------------------------------
   console.log('\n--- Step 4: Verifying Cross-Chat Memory Fallback ("What was our favorite database?") ---');
@@ -112,7 +112,7 @@ async function runPriorityTest() {
 
   const resolvedCrossChat = /postgresql|postgres/i.test(chatB3Response);
   if (resolvedCrossChat) {
-    console.log('  ✓ PASSED: Cross-Chat Brain-Vault fallback succeeded! Recalled PostgreSQL from Chat A.');
+    console.log('  ✓ PASSED: Cross-Chat Memory System fallback succeeded! Recalled PostgreSQL from Chat A.');
   } else {
     console.error('  ✗ FAILED: Expected PostgreSQL from Chat A, but got:', chatB3Response);
     process.exit(1);

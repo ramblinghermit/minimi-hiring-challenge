@@ -359,7 +359,7 @@ async function runScaleBenchmark() {
     );
 
     if ((i + 1) % 10 === 0) {
-      console.log(`✓ Ingested ${i + 1}/${dataset.length} conversations into Brain-Vault memory ledger`);
+      console.log(`✓ Ingested ${i + 1}/${dataset.length} conversations into Memory System ledger`);
     }
   }
 

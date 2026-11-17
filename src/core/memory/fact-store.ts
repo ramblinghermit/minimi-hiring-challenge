@@ -2,37 +2,63 @@ import fs from 'fs/promises';
 import path from 'path';
 import { FactEntry } from '../types';
 import { getDefaultStorageDir } from './storage-dir';
+import { AtomicFileWriter } from './atomic-file-writer';
+
+export function isFactUserMatch(factUserId?: string, targetUserId?: string): boolean {
+  const normFact = factUserId || 'default_user';
+  const normTarget = targetUserId || 'default_user';
+
+  if (normFact === normTarget) return true;
+  if ((normFact === 'demo' && normTarget === 'usr_demo') || (normFact === 'usr_demo' && normTarget === 'demo')) return true;
+  if ((normTarget === 'demo' || normTarget === 'usr_demo') && normFact === 'default_user') return true;
+  return false;
+}
 
 /**
- * Brain-Vault Tri-Temporal Fact Store
+ * Tri-Temporal Fact Store
  * Models truth as (subject, predicate, object) with validFrom, validUntil, isSuperseded.
- * Directly based on Brain-Vault's fact_service.py logic.
  */
 export class FactStore {
   private filePath: string;
   private facts: FactEntry[] = [];
   private isLoaded = false;
+  private lastMtimeMs = 0;
 
   constructor(storageDir: string = getDefaultStorageDir()) {
     this.filePath = path.join(storageDir, 'facts.json');
   }
 
   private async ensureLoaded(): Promise<void> {
-    if (this.isLoaded) return;
     try {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+      const stat = await fs.stat(this.filePath);
+      if (this.isLoaded && stat.mtimeMs <= this.lastMtimeMs) {
+        return;
+      }
       const raw = await fs.readFile(this.filePath, 'utf-8');
       this.facts = JSON.parse(raw);
-    } catch {
-      this.facts = [];
+      this.lastMtimeMs = stat.mtimeMs;
+      this.isLoaded = true;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        this.facts = [];
+        this.lastMtimeMs = 0;
+        this.isLoaded = true;
+      } else if (!this.isLoaded) {
+        this.facts = [];
+        this.isLoaded = true;
+      }
     }
-    this.isLoaded = true;
   }
 
   private async persist(): Promise<void> {
-    const dir = path.dirname(this.filePath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(this.facts, null, 2), 'utf-8');
+    await AtomicFileWriter.write(this.filePath, this.facts);
+    try {
+      const stat = await fs.stat(this.filePath);
+      this.lastMtimeMs = stat.mtimeMs;
+    } catch {
+      this.lastMtimeMs = Date.now();
+    }
   }
 
   /**
@@ -41,10 +67,13 @@ export class FactStore {
   public async addFact(fact: Omit<FactEntry, 'id' | 'createdAt' | 'isSuperseded'> & { isSuperseded?: boolean }): Promise<FactEntry> {
     await this.ensureLoaded();
 
-    // Check if this fact supersedes an active fact with same subject and predicate
+    // Check if this fact supersedes an active fact with same subject and predicate for this user/shared
     const nowIso = new Date().toISOString();
     const existing = this.facts.find(
-      (f) => !f.isSuperseded && f.subject.toLowerCase() === fact.subject.toLowerCase() && f.predicate.toLowerCase() === fact.predicate.toLowerCase()
+      (f) => !f.isSuperseded &&
+        f.subject.toLowerCase() === fact.subject.toLowerCase() &&
+        f.predicate.toLowerCase() === fact.predicate.toLowerCase() &&
+        isFactUserMatch(f.userId, fact.userId)
     );
 
     if (existing) {
@@ -69,9 +98,9 @@ export class FactStore {
   /**
    * Search active (non-superseded) facts by subject or keyword
    */
-  public async getActiveFacts(query?: string): Promise<FactEntry[]> {
+  public async getActiveFacts(query?: string, userId?: string): Promise<FactEntry[]> {
     await this.ensureLoaded();
-    const active = this.facts.filter((f) => !f.isSuperseded);
+    const active = this.facts.filter((f) => !f.isSuperseded && isFactUserMatch(f.userId, userId));
     if (!query) return active;
 
     const lower = query.toLowerCase();

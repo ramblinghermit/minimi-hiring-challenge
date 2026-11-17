@@ -19,10 +19,10 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
-  // Initialize Users & Brain-Vault Memory
+  // Initialize Users & Memory System
   await userStore.init();
   await brainVault.init();
-  console.log('🧠 [Brain-Vault] Memory engine & user authentication initialized.');
+  console.log('🧠 [Memory System] Memory engine & user authentication initialized.');
 
   // Mount API Router
   app.use('/api', apiRouter);
@@ -48,9 +48,9 @@ async function startServer() {
   app.listen(PORT, () => {
     console.log(`
 ================================================================
-🚀 Minimi Search Agent is live!
+🚀 minimi-chat-agent is live!
 🌐 URL: http://localhost:${PORT}
-🧠 Brain-Vault Memory: Multi-View (Episodic + State + Profiles)
+🧠 Memory System: Multi-View (Episodic + State + Profiles)
 🛡️ AgentBridge Governance: Auto-Pilot & Supervised Modes
 🔍 Tool: Web Search (Brave / Tavily / Zero-Key Fallback)
 ================================================================

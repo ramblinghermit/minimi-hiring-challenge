@@ -2,6 +2,46 @@ import { executeBraveSearch } from './brave-search';
 import { executeTavilySearch } from './tavily-search';
 import { executeFallbackSearch } from './fallback-search';
 import { SearchOptions, SearchResponse, SearchResultItem, SourceCitation } from '../types';
+import { SecurityGuardrails } from '../security/guardrails';
+import { sanitizeSearchSnippet } from '../security/prompt-injection';
+
+/**
+ * Known programmatic SEO farms and scraper sites that pollute search results
+ */
+const LOW_QUALITY_DOMAINS = new Set([
+  'macrotrends.net',
+  'marketbeat.com',
+  'stockanalysis.com',
+  'tickerreport.com',
+  'defenseworld.net',
+  'americanbankingnews.com',
+  'etfdailynews.com',
+  'investorplace.com',
+  'zacks.com',
+  'gurufocus.com',
+  'tipranks.com',
+  'fool.com',
+  'benzinga.com',
+]);
+
+/**
+ * Authoritative, high-signal primary source domains to prioritize
+ */
+const HIGH_QUALITY_DOMAINS = new Set([
+  'sec.gov',
+  'reuters.com',
+  'bloomberg.com',
+  'cnbc.com',
+  'wsj.com',
+  'ft.com',
+  'apnews.com',
+  'nytimes.com',
+  'theverge.com',
+  'techcrunch.com',
+  'arstechnica.com',
+  'github.com',
+  'wikipedia.org',
+]);
 
 /**
  * Unified Search Engine Router ("The One Tool")
@@ -26,12 +66,24 @@ export class SearchRouter {
   }
 
   /**
-   * Execute a single web search query with automatic failover
+   * Execute a single web search query with automatic failover and guardrails
    */
   public async searchSingle(query: string, options: SearchOptions = {}): Promise<SearchResponse> {
+    const validation = SecurityGuardrails.validateSearchQuery(query);
+    if (!validation.valid) {
+      console.warn(`[SearchRouter] Blocked unsafe search query: "${query}" (${validation.reason})`);
+      return {
+        results: [],
+        provider: 'fallback',
+        query,
+        executionTimeMs: 0,
+      };
+    }
+    const safeQuery = validation.sanitizedQuery;
+
     if (this.braveKey) {
       try {
-        return await executeBraveSearch(query, this.braveKey, options);
+        return await executeBraveSearch(safeQuery, this.braveKey, options);
       } catch (err) {
         console.warn(`[SearchRouter] Brave search failed, falling back to zero-key search:`, err);
       }
@@ -39,14 +91,14 @@ export class SearchRouter {
 
     if (this.tavilyKey) {
       try {
-        return await executeTavilySearch(query, this.tavilyKey, options);
+        return await executeTavilySearch(safeQuery, this.tavilyKey, options);
       } catch (err) {
         console.warn(`[SearchRouter] Tavily search failed, falling back to zero-key search:`, err);
       }
     }
 
     // Zero-Key Fallback
-    return await executeFallbackSearch(query, options);
+    return await executeFallbackSearch(safeQuery, options);
   }
 
   /**
@@ -61,29 +113,44 @@ export class SearchRouter {
     const responses = await Promise.allSettled(queryPromises);
 
     const seenUrls = new Set<string>();
-    const aggregatedResults: SearchResultItem[] = [];
+    const candidates: SearchResultItem[] = [];
 
     for (const res of responses) {
       if (res.status === 'fulfilled') {
         for (const item of res.value.results) {
           if (!seenUrls.has(item.url)) {
             seenUrls.add(item.url);
-            aggregatedResults.push(item);
+            candidates.push(item);
           }
         }
       }
     }
 
-    // Limit to top 8 distinct sources
-    const topResults = aggregatedResults.slice(0, 8);
+    // Filter out low-quality SEO farms if other sources are available
+    const cleanResults = candidates.filter(
+      (item) => !LOW_QUALITY_DOMAINS.has(item.domain.toLowerCase())
+    );
+    const pool = cleanResults.length >= 2 ? cleanResults : candidates;
 
-    // Build indexed citations
+    // Rank: boost authoritative primary sources, demote low-quality farms
+    pool.sort((a, b) => {
+      const aIsHigh = HIGH_QUALITY_DOMAINS.has(a.domain.toLowerCase()) ? 1 : 0;
+      const bIsHigh = HIGH_QUALITY_DOMAINS.has(b.domain.toLowerCase()) ? 1 : 0;
+      const aIsLow = LOW_QUALITY_DOMAINS.has(a.domain.toLowerCase()) ? 1 : 0;
+      const bIsLow = LOW_QUALITY_DOMAINS.has(b.domain.toLowerCase()) ? 1 : 0;
+      return (bIsHigh - aIsHigh) || (aIsLow - bIsLow);
+    });
+
+    // Limit to top 8 distinct sources
+    const topResults = pool.slice(0, 8);
+
+    // Build indexed citations with prompt injection sanitization
     const citations: SourceCitation[] = topResults.map((item, index) => ({
       index: index + 1,
-      title: item.title,
+      title: sanitizeSearchSnippet(item.title),
       url: item.url,
       domain: item.domain,
-      snippet: item.snippet,
+      snippet: sanitizeSearchSnippet(item.snippet),
       publishedDate: item.publishedDate,
     }));
 

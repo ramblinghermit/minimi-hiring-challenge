@@ -11,11 +11,13 @@ export async function executeFallbackSearch(
 ): Promise<SearchResponse> {
   const startTime = Date.now();
   const maxResults = options.maxResults || 5;
+  const safeQuery = (query || '').slice(0, 150).trim();
 
   try {
-    // 1. DuckDuckGo HTML search endpoint
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    // 1. DuckDuckGo HTML search endpoint with timeout
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(safeQuery)}`;
     const response = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -103,8 +105,11 @@ async function executeInstantAnswerSearch(
   startTime: number,
   maxResults: number
 ): Promise<SearchResponse> {
+  const safeQuery = (query || '').slice(0, 150).trim();
   try {
-    const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`);
+    const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(safeQuery)}&format=json&no_html=1&skip_disambig=1`, {
+      signal: AbortSignal.timeout(4000),
+    });
     const data = await res.json();
     const results: SearchResultItem[] = [];
 

@@ -103,7 +103,7 @@ async function runAuthAndSessionTests() {
       },
     ],
     [
-      'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+      'Reviewing past discussions and context...',
       'Search Strategy Planned: Search top CRM systems 2026',
       'Executing parallel web search via BRAVE...',
       'Search completed. Retrieved 1 verified web source.',
@@ -155,6 +155,7 @@ async function runAuthAndSessionTests() {
   console.log('✓ Timing order verified: Search -> Tokens Streamed -> Citations Emitted -> Done');
 
   console.log('\n🎉 ALL NEW AUTH, USER DISTINCTION, SESSIONS & TIMING TESTS PASSED!');
+  process.exit(0);
 }
 
 runAuthAndSessionTests().catch((err) => {

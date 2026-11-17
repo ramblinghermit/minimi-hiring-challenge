@@ -77,7 +77,7 @@ export async function seedBenchmarkScenarios(
       entities: ['HubSpot', 'Pipedrive', 'Zoho CRM', 'Close CRM', 'Salesforce Sales Cloud'],
       topics: ['crm', 'sales tools', 'pricing for 20-person team'],
       scratchpad: [
-        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Reviewing past discussions and context...',
         'Resolved Temporal Anchor: Monday (relative anchor)',
         'Search Strategy Planned: Shortlist 5 CRM tools with pricing for 20-seat sales team',
         'Executing parallel web search via BRAVE...',
@@ -146,7 +146,7 @@ export async function seedBenchmarkScenarios(
       entities: ['Claude 3.5 Haiku', 'Anthropic'],
       topics: ['llm pricing', 'context window', 'haiku'],
       scratchpad: [
-        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Reviewing past discussions and context...',
         'Resolved Temporal Anchor: 3 November 2026 (absolute anchor)',
         'Search Strategy Planned: Anthropic Claude 3.5 Haiku pricing context window specs',
         'Executing parallel web search via BRAVE...',
@@ -206,7 +206,7 @@ export async function seedBenchmarkScenarios(
       entities: ['Supabase', 'Neon', 'AWS Aurora Serverless', 'Crunchy Bridge'],
       topics: ['postgres hosting', 'database pricing', 'serverless postgres'],
       scratchpad: [
-        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Reviewing past discussions and context...',
         'Resolved Temporal Anchor: Last Tuesday (relative anchor)',
         'Search Strategy Planned: Managed Postgres hosting pricing breakdown Supabase Neon Aurora Crunchy',
         'Executing parallel web search via BRAVE...',
@@ -278,7 +278,7 @@ export async function seedBenchmarkScenarios(
       entities: ['Pinecone', 'Qdrant', 'Milvus', 'Weaviate'],
       topics: ['vector database', 'rag', 'serverless pricing'],
       scratchpad: [
-        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Reviewing past discussions and context...',
         'Resolved Temporal Anchor: Two weeks ago (relative anchor)',
         'Search Strategy Planned: Vector database serverless pricing Pinecone Qdrant Milvus Weaviate',
         'Executing parallel web search via BRAVE...',
@@ -348,7 +348,7 @@ export async function seedBenchmarkScenarios(
       entities: ['Drizzle ORM', 'Prisma ORM'],
       topics: ['typescript orm', 'serverless cold starts', 'drizzle vs prisma'],
       scratchpad: [
-        'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+        'Reviewing past discussions and context...',
         'Resolved Temporal Anchor: Three days ago (relative anchor)',
         'Search Strategy Planned: Drizzle ORM and Prisma releases cold starts serverless benchmarks',
         'Executing parallel web search via BRAVE...',

@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { User, SafeUser, AuthSession } from '../types';
 import { getDefaultStorageDir } from '../memory/storage-dir';
+import { AtomicFileWriter } from '../memory/atomic-file-writer';
 
 /**
  * User & Authentication Store
@@ -69,15 +70,11 @@ export class UserStore {
   }
 
   private async persistUsers(): Promise<void> {
-    const dir = path.dirname(this.usersFile);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(this.usersFile, JSON.stringify(this.users, null, 2), 'utf-8');
+    await AtomicFileWriter.write(this.usersFile, this.users);
   }
 
   private async persistTokens(): Promise<void> {
-    const dir = path.dirname(this.tokensFile);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(this.tokensFile, JSON.stringify(this.tokens, null, 2), 'utf-8');
+    await AtomicFileWriter.write(this.tokensFile, this.tokens);
   }
 
   private async seedDefaultUsers(): Promise<void> {

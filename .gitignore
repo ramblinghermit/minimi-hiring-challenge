@@ -6,13 +6,18 @@ node_modules/
 .env.local
 .env.*.local
 !.env.example
+gcp-key.json
+*-key.json
+memwyre-*.json
 
 # Production Builds
 dist/
 build/
 
-# Local Brain-Vault Runtime Data
+# Local Memory System Runtime Data
 .data/
+test-storage-*/
+test-storage-async-extract/
 
 # Logs & Debug
 npm-debug.log*

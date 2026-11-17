@@ -1,14 +1,31 @@
 import { Router, Request, Response } from 'express';
 import { AgentOrchestrator } from '../core/agent/orchestrator';
 import { PermissionGate } from '../core/agent/permission-gate';
+import { executionManager } from '../core/agent/execution-manager';
 import { brainVault } from '../core/memory/brain-vault';
 import { searchRouter } from '../core/search/search-router';
 import { LLMClient } from '../core/llm/llm-client';
 import { userStore } from '../core/auth/user-store';
 import { getAuthUser } from './auth-middleware';
 import { SSEWriter } from './sse';
+import {
+  authRateLimiter,
+  chatRateLimiter,
+  generalApiRateLimiter,
+  createRateLimitMiddleware,
+} from '../core/security';
 
 export const apiRouter = Router();
+
+// Apply General API Rate Limiting across all API routes (120 req/min)
+apiRouter.use(
+  createRateLimitMiddleware(generalApiRateLimiter, {
+    windowMs: 60 * 1000,
+    maxRequests: 120,
+    keyPrefix: 'api',
+    message: 'API rate limit exceeded. Please wait a minute before making more requests.',
+  })
+);
 
 // =========================================================================
 // Authentication Endpoints (Multi-User Distinction)
@@ -18,7 +35,15 @@ export const apiRouter = Router();
  * POST /api/auth/register
  * Registers a new user account with secure hashed credentials
  */
-apiRouter.post('/auth/register', async (req: Request, res: Response) => {
+apiRouter.post(
+  '/auth/register',
+  createRateLimitMiddleware(authRateLimiter, {
+    windowMs: 60 * 1000,
+    maxRequests: 15,
+    keyPrefix: 'auth',
+    message: 'Too many registration attempts. Please wait 1 minute before retrying.',
+  }),
+  async (req: Request, res: Response) => {
   try {
     const { username, password, name } = req.body;
     if (!username || !password) {
@@ -40,7 +65,15 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
  * POST /api/auth/login
  * Authenticates user credentials and issues session token
  */
-apiRouter.post('/auth/login', async (req: Request, res: Response) => {
+apiRouter.post(
+  '/auth/login',
+  createRateLimitMiddleware(authRateLimiter, {
+    windowMs: 60 * 1000,
+    maxRequests: 15,
+    keyPrefix: 'auth',
+    message: 'Too many login attempts. Please wait 1 minute before retrying.',
+  }),
+  async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
@@ -149,11 +182,11 @@ apiRouter.get('/sessions/:sessionId/messages', async (req: Request, res: Respons
       if ((!scratchpad || scratchpad.length === 0) && e.role === 'assistant') {
         const citesCount = e.metadata?.citations?.length || 0;
         scratchpad = [
-          'Querying Brain-Vault Multi-View Memory (Episodic + State + Entity Profiles)...',
+          'Reviewing past discussions and context...',
           citesCount > 0
             ? `Retrieved ${citesCount} verified web sources via Live Search`
-            : 'Recalled verified facts from episodic memory vault',
-          'Synthesizing verified response and streaming answer...',
+            : 'Recalled relevant context from earlier notes',
+          'Synthesizing verified response...',
         ];
       }
 
@@ -165,6 +198,7 @@ apiRouter.get('/sessions/:sessionId/messages', async (req: Request, res: Respons
         createdAt: e.createdAt,
         citations: e.metadata?.citations || [],
         scratchpad: scratchpad || [],
+        durationMs: e.metadata?.durationMs || (scratchpad?.length ? Math.round(scratchpad.length * 650 + 400) : null),
         isStreaming: false,
       };
     });
@@ -223,7 +257,16 @@ apiRouter.delete('/sessions/:sessionId', async (req: Request, res: Response) => 
  * GET /api/chat/stream
  * Server-Sent Events stream implementing AgentBridge chat protocol
  */
-apiRouter.get('/chat/stream', async (req: Request, res: Response) => {
+apiRouter.get(
+  '/chat/stream',
+  createRateLimitMiddleware(chatRateLimiter, {
+    windowMs: 60 * 1000,
+    maxRequests: 30,
+    keyPrefix: 'chat',
+    isSseEndpoint: true,
+    message: 'Too many chat requests. Please wait a moment before sending another prompt.',
+  }),
+  async (req: Request, res: Response) => {
   const user = await getAuthUser(req);
   const prompt = String(req.query.prompt || '').trim();
   const sessionId = String(req.query.session_id || `session_${Date.now()}`);
@@ -239,7 +282,9 @@ apiRouter.get('/chat/stream', async (req: Request, res: Response) => {
 
   const sse = new SSEWriter(res);
 
+  // Terminate execution and close SSE cleanly when client disconnects
   req.on('close', () => {
+    executionManager.terminate(sessionId, user.id, 'client_disconnect');
     sse.close();
   });
 
@@ -255,14 +300,93 @@ apiRouter.get('/chat/stream', async (req: Request, res: Response) => {
     onToolApproved: (data) => sse.send('tool_approved', data),
     onToken: (content) => sse.send('llm_token', { content }),
     onCitations: (citations) => sse.send('citations', { citations }),
+    onPaused: (data) => sse.send('agent_paused', data),
+    onResumed: (data) => sse.send('agent_resumed', data),
+    onTerminated: (data) => sse.send('agent_terminated', data),
     onError: (err) => {
       sse.send('agent_error', { message: err.message || 'Processing failed' });
       sse.close();
     },
-    onDone: () => {
-      sse.send('done', { status: 'complete', sessionId });
+    onDone: (durationMs?: number) => {
+      sse.send('done', { status: 'complete', sessionId, durationMs });
       sse.close();
     },
+  });
+});
+
+/**
+ * POST /api/chat/pause
+ * Pauses active agent execution for the session
+ */
+apiRouter.post('/chat/pause', async (req: Request, res: Response) => {
+  try {
+    const user = await getAuthUser(req);
+    const sessionId = String(req.body?.session_id || '').trim();
+    if (!sessionId) {
+      res.status(400).json({ error: 'Missing session_id parameter' });
+      return;
+    }
+    const success = executionManager.pause(sessionId, user.id);
+    res.json({ success, status: executionManager.getStatus(sessionId) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/chat/resume
+ * Resumes paused agent execution for the session
+ */
+apiRouter.post('/chat/resume', async (req: Request, res: Response) => {
+  try {
+    const user = await getAuthUser(req);
+    const sessionId = String(req.body?.session_id || '').trim();
+    if (!sessionId) {
+      res.status(400).json({ error: 'Missing session_id parameter' });
+      return;
+    }
+    const success = executionManager.resume(sessionId, user.id);
+    res.json({ success, status: executionManager.getStatus(sessionId) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/chat/terminate
+ * Immediately terminates active agent execution for the session
+ */
+apiRouter.post('/chat/terminate', async (req: Request, res: Response) => {
+  try {
+    const user = await getAuthUser(req);
+    const sessionId = String(req.body?.session_id || '').trim();
+    const reason = String(req.body?.reason || 'user_requested');
+    if (!sessionId) {
+      res.status(400).json({ error: 'Missing session_id parameter' });
+      return;
+    }
+    const success = executionManager.terminate(sessionId, user.id, reason);
+    res.json({ success, status: executionManager.getStatus(sessionId) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/chat/status/:sessionId
+ * Returns live status of an agent execution run
+ */
+apiRouter.get('/chat/status/:sessionId', async (req: Request, res: Response) => {
+  const sessionId = String(req.params.sessionId);
+  const exec = executionManager.getExecution(sessionId);
+  res.json({
+    sessionId,
+    status: executionManager.getStatus(sessionId),
+    isPaused: executionManager.isPaused(sessionId),
+    isRunning: executionManager.isRunning(sessionId),
+    isTerminated: executionManager.isTerminated(sessionId),
+    currentStep: exec?.currentStep || 'idle',
+    totalPausedMs: exec?.totalPausedMs || 0,
   });
 });
 
@@ -270,27 +394,43 @@ apiRouter.get('/chat/stream', async (req: Request, res: Response) => {
  * POST /api/tool/approve
  * Resolves AgentBridge tool execution permission
  */
-apiRouter.post('/tool/approve', (req: Request, res: Response) => {
-  const { approval_id, approved, approval_type, tool_name } = req.body;
+apiRouter.post('/tool/approve', async (req: Request, res: Response) => {
+  const user = await getAuthUser(req);
+  const approvalId = req.body?.approval_id || req.body?.approvalId;
+  const toolName = req.body?.tool_name || req.body?.toolName || 'web_search';
+  const approved = req.body?.approved !== false && req.body?.approved !== 'false';
 
-  if (!approval_id) {
+  let rawType = req.body?.approval_type || req.body?.approvalType || 'once';
+  let approvalType: 'once' | 'always' | 'deny' = 'once';
+  if (rawType === 'always' || rawType === 'permanent') {
+    approvalType = 'always';
+  } else if (rawType === 'deny' || !approved) {
+    approvalType = 'deny';
+  } else {
+    approvalType = 'once';
+  }
+
+  if (!approvalId) {
     res.status(400).json({ error: 'Missing approval_id' });
     return;
   }
 
-  const success = PermissionGate.resolveApproval({
-    approvalId: approval_id,
-    approved: Boolean(approved),
-    approvalType: approval_type || 'once',
-    toolName: tool_name || 'web_search',
-  });
+  const success = PermissionGate.resolveApproval(
+    {
+      approvalId,
+      approved,
+      approvalType,
+      toolName,
+    },
+    user.id
+  );
 
   res.json({ success });
 });
 
 /**
  * GET /api/memory/status
- * Returns Brain-Vault memory statistics and stored facts
+ * Returns Memory System statistics and stored facts
  */
 apiRouter.get('/memory/status', async (req: Request, res: Response) => {
   const user = await getAuthUser(req);
@@ -324,7 +464,7 @@ apiRouter.post('/memory/reset', async (req: Request, res: Response) => {
   const user = await getAuthUser(req);
   const refDate = req.body?.reference_date ? new Date(req.body.reference_date) : new Date();
   await brainVault.resetAndReseed(refDate, user.id);
-  res.json({ success: true, message: `Brain-Vault memory reset and benchmark scenarios reseeded for ${user.username}` });
+  res.json({ success: true, message: `Memory System reset and benchmark scenarios reseeded for ${user.username}` });
 });
 
 /**
@@ -336,14 +476,14 @@ apiRouter.get('/models', (_req: Request, res: Response) => {
   res.json({
     active,
     options: [
+      { id: 'gemini-3.5-flash', provider: 'vertex', name: 'Gemini 3.5 Flash (Vertex AI • Recommended)' },
+      { id: 'gemini-3.1-flash-lite', provider: 'vertex', name: 'Gemini 3.1 Flash-Lite (Vertex AI)' },
+      { id: 'gemini-3.5-flash-lite', provider: 'vertex', name: 'Gemini 3.5 Flash-Lite (Vertex AI)' },
+      { id: 'gemini-2.5-flash-lite', provider: 'gemini', name: 'Gemini 2.5 Flash-Lite' },
       { id: 'gpt-4o-mini', provider: 'openai', name: 'GPT-4o Mini (Fast)' },
       { id: 'gpt-4o', provider: 'openai', name: 'GPT-4o (Reasoning)' },
       { id: 'claude-3-5-haiku-latest', provider: 'anthropic', name: 'Claude 3.5 Haiku' },
       { id: 'claude-3-5-sonnet-latest', provider: 'anthropic', name: 'Claude 3.5 Sonnet' },
-      { id: 'gemini-2.5-flash-lite', provider: 'gemini', name: 'Gemini 2.5 Flash-Lite (Recommended)' },
-      { id: 'gemini-3.1-flash-lite', provider: 'gemini', name: 'Gemini 3.1 Flash-Lite' },
-      { id: 'gemini-3.5-flash-lite', provider: 'gemini', name: 'Gemini 3.5 Flash-Lite' },
-      { id: 'gemini-2.5-flash', provider: 'gemini', name: 'Gemini 2.5 Flash' },
       { id: 'llama-3.3-70b-versatile', provider: 'groq', name: 'Groq Llama 3.3 70B' },
     ],
   });

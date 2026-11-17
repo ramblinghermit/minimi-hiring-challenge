@@ -1,11 +1,14 @@
 import path from 'path';
 
 /**
- * Returns the active storage directory for Brain-Vault persistence files.
- * Uses .data/test_vault when running in test mode (NODE_ENV=test, BRAIN_VAULT_DIR set,
+ * Returns the active storage directory for Memory System persistence files.
+ * Uses .data/test_vault when running in test mode (NODE_ENV=test, MEMORY_DIR or BRAIN_VAULT_DIR set,
  * or when executing via test files in test/), preserving live user chat history in .data/brain_vault.
  */
 export function getDefaultStorageDir(): string {
+  if (process.env.MEMORY_DIR) {
+    return process.env.MEMORY_DIR;
+  }
   if (process.env.BRAIN_VAULT_DIR) {
     return process.env.BRAIN_VAULT_DIR;
   }

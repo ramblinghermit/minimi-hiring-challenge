@@ -222,16 +222,16 @@ export class KnowledgeExtractor {
     if (lower.includes('payment') || lower.includes('gateway') || lower.includes('checkout') || lower.includes('merchant')) {
       return 'service';
     }
-    if (lower.includes('crm') || lower.includes('sales pipeline') || lower.includes('sales team')) {
+    if (lower.includes('crm') || lower.includes('sales pipeline') || lower.includes('sales team') || lower.includes('sales reps') || lower.includes('account executives') || lower.includes('customer relationship')) {
       return 'crm';
     }
-    if (lower.includes('database') || lower.includes('postgres') || lower.includes('vector db') || lower.includes('sql')) {
+    if (lower.includes('database') || lower.includes('postgres') || lower.includes('vector db') || lower.includes('sql') || lower.includes('nosql') || lower.includes('sqlite') || lower.includes('cache')) {
       return 'database';
     }
-    if (lower.includes('hosting') || lower.includes('serverless') || lower.includes('cloud')) {
+    if (lower.includes('hosting') || lower.includes('serverless') || lower.includes('cloud') || lower.includes('paas') || lower.includes('edge functions') || lower.includes('deployment')) {
       return 'hosting';
     }
-    if (lower.includes('email') || lower.includes('transactional') || lower.includes('voice') || lower.includes('api')) {
+    if (lower.includes('email') || lower.includes('transactional') || lower.includes('voice') || lower.includes('api') || lower.includes('transcription') || lower.includes('auth') || lower.includes('monitoring') || lower.includes('analytics')) {
       return 'service';
     }
     return 'tool';
@@ -252,10 +252,10 @@ export class KnowledgeExtractor {
   }
 
   /**
-   * Discovers pricing stated for a specific entity
+   * Discovers pricing stated for a specific entity with multi-currency & unit support
    */
   private static extractEntityPricing(entity: string, text: string): string | null {
-    // 1. Look for sentences containing the entity and a currency or percentage sign
+    // 1. Look for sentences containing the entity and a currency, fee, or pricing structure
     const lines = text.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -263,13 +263,20 @@ export class KnowledgeExtractor {
         // Look ahead 2 lines for price mention
         const block = lines.slice(i, i + 3).join(' ');
         
-        // Fee pattern: e.g. "2.9% + 30¢", "5% + 50¢"
-        const feeMatch = block.match(/(\d+(?:\.\d+)?%\s*\+\s*(?:\$\d+(?:\.\d+)?|\d+¢))/i);
+        // Fee pattern: e.g. "2.9% + 30¢", "5% + 50¢", "2.9% + $0.30"
+        const feeMatch = block.match(/(\d+(?:\.\d+)?%\s*(?:\+\s*(?:[\$€£₹¥]?\d+(?:\.\d+)?|\d+¢)))/i);
         if (feeMatch) return feeMatch[1].trim();
 
-        // Monthly / seat pattern: e.g. "$20/mo", "$19.95/mo", "$90-$100/seat/month", "$40/user/month"
-        const priceMatch = block.match(/(\$\d+(?:-\$?\d+)?(?:\.\d{2})?\s*(?:\/(?:mo|month|seat|user|year|seat\/month|user\/month))?)/i);
+        // Multi-currency pricing pattern: $, €, £, ₹, ¥, USD, EUR
+        // Supports seat, user, month, vCPU, hourly, per-request, and free tier definitions
+        const priceMatch = block.match(
+          /((?:[\$€£₹¥]\s*\d+(?:,\d{3})*(?:-\s*[\$€£₹¥]?\d+(?:,\d{3})*)?(?:\.\d{2,6})?|\d+(?:\.\d+)?\s*(?:USD|EUR|GBP|INR|cents|¢))\s*(?:\/(?:mo|month|seat|user|year|day|hour|vCPU\/month|vCPU-hour|node-hour|GB-second|sec|event|seat\/month|user\/month)|(?:\s*per\s+(?:mo|month|seat|user|year|day|hour|vCPU|node|GB|100k\s+requests|1k\s+requests|1m\s+requests|1\s+million\s+requests|successful\s+card\s+charge|event)))?)/i
+        );
         if (priceMatch) return priceMatch[1].trim();
+
+        // Free tier or zero monthly fee pattern
+        const freeMatch = block.match(/(free(?:\s+for\s+[^\n.,;]+|\s+tier|\s+self-hosted|\s+open-source)?|zero\s+monthly\s+SaaS\s+fee)/i);
+        if (freeMatch) return freeMatch[1].trim();
       }
     }
 
@@ -285,11 +292,22 @@ export class KnowledgeExtractor {
       const line = lines[i];
       if (line.toLowerCase().includes(entity.toLowerCase())) {
         const block = lines.slice(i, i + 3).join(' ');
-        // Specs like "50k emails", "10k emails", "100,000 characters", "20-person sales team"
-        const specMatch = block.match(/(\b\d+[kKmM]?\s+(?:emails|requests|characters|users|seats|tokens|events)\b)/i);
+        // Specs like "50,000 emails", "50k emails", "10k emails", "100,000 characters", "20-person sales team"
+        const specMatch = block.match(/(\b\d+(?:,\d{3})*[kKmM]?\s+(?:emails|requests|characters|users|seats|tokens|events)\b)/i);
         if (specMatch) return specMatch[1].trim();
       }
     }
     return null;
   }
+
+  /**
+   * Delegates to AsyncFactExtractor for background LLM distillation
+   */
+  public static async distillAsync(params: import('./async-fact-extractor').DistillTurnParams): Promise<void> {
+    const { AsyncFactExtractor } = await import('./async-fact-extractor');
+    return AsyncFactExtractor.distillTurnAsync(params);
+  }
 }
+
+export { AsyncFactExtractor } from './async-fact-extractor';
+

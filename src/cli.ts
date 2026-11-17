@@ -8,8 +8,8 @@ async function runCLI() {
 
   console.log(`
 ================================================================
-✨ Minimi Terminal Interface
-🧠 Brain-Vault Episodic Memory Active
+✨ Chat Agent Terminal Interface
+🧠 Memory System Active
 🔍 Web Search Tool Active
 Type your question or 'exit' to quit.
 ================================================================
@@ -28,13 +28,13 @@ Type your question or 'exit' to quit.
         process.exit(0);
       }
 
-      console.log('\n🤖 Minimi:');
+      console.log('\n🤖 Chat Agent:');
 
       await AgentOrchestrator.execute(text, {
         autoPilot: true,
         onScratchpad: (event) => {
           if (event.type === 'memory_recall') {
-            console.log(`\x1b[35m🧠 [Brain-Vault] ${event.content}\x1b[0m`);
+            console.log(`\x1b[35m🧠 [Memory System] ${event.content}\x1b[0m`);
           } else if (event.type === 'tool_end') {
             console.log(`\x1b[36m🔍 [Search] ${event.content}\x1b[0m\n`);
           }

@@ -10,7 +10,7 @@ export interface PlannedSearch {
 /**
  * Query Planner for Minimi Web Search Agent
  * Deconstructs ambiguous user prompts into high-precision, parallel search queries
- * using Brain-Vault memory context.
+ * using Memory System context.
  */
 export class QueryPlanner {
   /**
@@ -20,7 +20,13 @@ export class QueryPlanner {
     const text = prompt.toLowerCase().trim();
 
     // Pure conversational greetings / meta questions do not require search
-    if (/^(hi|hello|hey|who are you|what can you do|good morning|thanks|thank you)\b/i.test(text) && text.length < 30) {
+    if (/^(hi|hello|hey|who are you|what can you do|good morning|thanks|thank you)\b/i.test(text) && text.length < 100) {
+      return false;
+    }
+
+    // Explicit check: If temporal memory recall query had ZERO matching historical turns,
+    // do NOT waste time searching the web to guess what the user asked in the past
+    if (context?.hasZeroMatchingHistory) {
       return false;
     }
 
@@ -74,7 +80,7 @@ export class QueryPlanner {
   }
 
   /**
-   * Plan decomposed targeted queries using Brain-Vault context
+   * Plan decomposed targeted queries using Memory System context
    */
   public static planQueries(prompt: string, context: BrainVaultContext): PlannedSearch {
     const text = prompt.toLowerCase();
@@ -83,15 +89,15 @@ export class QueryPlanner {
     const queries: string[] = [];
     let isDeltaSearch = false;
 
-    // 1. Check if we have entity profiles from Brain-Vault
+    // 1. Check if we have entity profiles from Memory System
     if (context.entityProfiles.length > 0) {
       for (const prof of context.entityProfiles) {
         targetEntities.push(prof.entityName);
       }
     }
 
-    // 2. Check if we have entities from episodic memories
-    if (targetEntities.length === 0 && context.episodicMemories.length > 0) {
+    // 2. Check if we have entities from episodic memories (only for temporal anchor or delta intent)
+    if (context.temporalAnchor && targetEntities.length === 0 && context.episodicMemories.length > 0) {
       for (const mem of context.episodicMemories) {
         if (mem.metadata?.entities) {
           for (const ent of mem.metadata.entities) {
@@ -103,46 +109,62 @@ export class QueryPlanner {
       }
     }
 
-    // 3. Temporal Delta Intent (e.g., "Has any of them changed pricing or shipped something big since?")
-    if (
-      text.includes('changed') ||
-      text.includes('since') ||
-      text.includes('shipped') ||
-      text.includes('pricing') ||
-      text.includes('still correct')
-    ) {
+    // 3. Temporal Delta Intent (Requires a temporal anchor OR explicit delta keywords)
+    const anchorDate = context.temporalAnchor?.dateString || context.temporalAnchor?.label;
+    const dateBound = anchorDate ? `since ${anchorDate}` : `${currentYear}`;
+    const hasExplicitDeltaKeywords = /\b(changed|change|changes|since|shipped|updates since|still correct|still accurate|new features)\b/i.test(prompt);
+
+    if (context.temporalAnchor || hasExplicitDeltaKeywords) {
       isDeltaSearch = true;
 
-      if (targetEntities.length > 0) {
-        // Formulate targeted queries for the top entities (limit to top 4 for fast parallel execution)
-        const topEntities = targetEntities.slice(0, 4);
-        for (const entity of topEntities) {
+      // Filter target entities to only those actually relevant to the prompt or temporal context
+      const relevantEntities = targetEntities.filter((ent) => 
+        new RegExp(`\\b${ent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(prompt)
+      );
+      const entitiesToQuery = relevantEntities.length > 0 ? relevantEntities : (context.temporalAnchor ? targetEntities.slice(0, 4) : []);
+
+      if (entitiesToQuery.length > 0) {
+        for (const entity of entitiesToQuery) {
           if (text.includes('pricing') || text.includes('cost') || text.includes('price')) {
-            queries.push(`${entity} pricing changes ${currentYear}`);
+            queries.push(`${entity} pricing changes ${dateBound}`);
           } else if (text.includes('shipped') || text.includes('feature')) {
-            queries.push(`${entity} changelog new features ${currentYear}`);
+            queries.push(`${entity} changelog new features ${dateBound}`);
           } else {
-            queries.push(`${entity} pricing and updates ${currentYear}`);
+            queries.push(`${entity} updates and changes ${dateBound}`);
           }
         }
-      } else if (/crm/i.test(prompt)) {
-        queries.push(`HubSpot Pipedrive Zoho CRM pricing changes ${currentYear}`);
-        queries.push(`CRM tools for sales team pricing updates ${currentYear}`);
-      } else if (/postgres/i.test(prompt)) {
-        queries.push(`Supabase Neon AWS Aurora Postgres hosting pricing changes ${currentYear}`);
-        queries.push(`Managed Postgres hosting pricing ${currentYear}`);
-      } else if (/haiku|anthropic|claude/i.test(prompt)) {
-        queries.push(`Claude 3.5 Haiku pricing context window official Anthropic`);
+      } else {
+        const topicMatch = prompt.match(/\b([A-Z][a-zA-Z0-9_\-\. ]{2,20}|(?:crm|postgres|vector database|database|orm|email api|hosting))\b/i);
+        const topic = topicMatch ? topicMatch[1] : 'service';
+        queries.push(`${topic} pricing changes ${dateBound}`);
       }
     }
 
-    // 4. If no specialized queries were generated, create focused queries from prompt
+    // 4. If no specialized queries were generated, create focused, length-capped query
     if (queries.length === 0) {
-      // Clean query of conversational filler
+      // Clean query of conversational filler and truncate to max 120 characters to avoid URL overflow
       const cleaned = prompt
         .replace(/^(can you|please|tell me|what did i ask you|is your answer still correct today)\s*/i, '')
+        .replace(/[^a-zA-Z0-9\s\.\-_]/g, ' ')
+        .trim()
+        .slice(0, 120)
         .trim();
-      queries.push(`${cleaned} ${currentYear}`);
+
+      const alreadyHasYear = /\b(19\d\d|20\d\d)\b/.test(cleaned);
+      const querySuffix = alreadyHasYear ? '' : ` ${currentYear}`;
+
+      const isFinancialOrEarnings =
+        /\b(earnings|quarterly|q1|q2|q3|q4|revenue|support level|resistance level|stock|guidance|conference call|financial results)\b/i.test(prompt);
+
+      if (isFinancialOrEarnings) {
+        const entityMatch = prompt.match(/\b([A-Z][a-zA-Z0-9_\-\.]{2,15}|NVDA|AAPL|MSFT|GOOGL|AMZN|TSLA|META)\b/);
+        const entity = entityMatch ? entityMatch[1] : '';
+        if (entity && /\bearnings\b/i.test(prompt)) {
+          queries.push(`${entity} earnings report conference call transcript${querySuffix}`.trim());
+        }
+      }
+
+      queries.push(`${cleaned}${querySuffix}`.trim());
     }
 
     return {

@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { ChatSession } from '../types';
 import { getDefaultStorageDir } from './storage-dir';
+import { AtomicFileWriter } from './atomic-file-writer';
 
 const BENCHMARK_SESSION_IDS = new Set([
   'session_crm_monday',
@@ -14,8 +15,9 @@ const BENCHMARK_SESSION_IDS = new Set([
 function isSessionUserMatch(sUserId: string, targetUserId?: string): boolean {
   if (!targetUserId) return true;
   if (sUserId === targetUserId) return true;
-  if (sUserId === 'default_user' || targetUserId === 'default_user') return true;
   if ((sUserId === 'demo' && targetUserId === 'usr_demo') || (sUserId === 'usr_demo' && targetUserId === 'demo')) return true;
+  if (targetUserId === 'default_user' && sUserId === 'default_user') return true;
+  if ((targetUserId === 'demo' || targetUserId === 'usr_demo' || targetUserId === 'default_user') && sUserId === 'default_user') return true;
   return false;
 }
 
@@ -28,27 +30,43 @@ export class SessionStore {
   private filePath: string;
   private sessions: ChatSession[] = [];
   private isLoaded = false;
+  private lastMtimeMs = 0;
 
   constructor(storageDir: string = getDefaultStorageDir()) {
     this.filePath = path.join(storageDir, 'sessions.json');
   }
 
   public async init(): Promise<void> {
-    if (this.isLoaded) return;
     try {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+      const stat = await fs.stat(this.filePath);
+      if (this.isLoaded && stat.mtimeMs <= this.lastMtimeMs) {
+        return;
+      }
       const raw = await fs.readFile(this.filePath, 'utf-8');
       this.sessions = JSON.parse(raw);
-    } catch {
-      this.sessions = [];
+      this.lastMtimeMs = stat.mtimeMs;
+      this.isLoaded = true;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        this.sessions = [];
+        this.lastMtimeMs = 0;
+        this.isLoaded = true;
+      } else if (!this.isLoaded) {
+        this.sessions = [];
+        this.isLoaded = true;
+      }
     }
-    this.isLoaded = true;
   }
 
   private async persist(): Promise<void> {
-    const dir = path.dirname(this.filePath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(this.sessions, null, 2), 'utf-8');
+    await AtomicFileWriter.write(this.filePath, this.sessions);
+    try {
+      const stat = await fs.stat(this.filePath);
+      this.lastMtimeMs = stat.mtimeMs;
+    } catch {
+      this.lastMtimeMs = Date.now();
+    }
   }
 
   public async getSessions(userId: string): Promise<ChatSession[]> {
@@ -57,8 +75,8 @@ export class SessionStore {
     return this.sessions
       .filter((s) => {
         if (!isSessionUserMatch(s.userId, userId)) return false;
-        // Don't show orphaned empty sessions that have 0 messages unless they are benchmark seeds
-        if (s.messageCount === 0 && !BENCHMARK_SESSION_IDS.has(s.id)) return false;
+        // Don't show orphaned empty sessions that have 0 messages unless they belong to this user or are benchmark seeds
+        if (s.messageCount === 0 && !BENCHMARK_SESSION_IDS.has(s.id) && s.userId !== userId) return false;
         if (seenIds.has(s.id)) return false;
         seenIds.add(s.id);
         return true;

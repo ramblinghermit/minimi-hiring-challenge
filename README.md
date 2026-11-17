@@ -1,6 +1,6 @@
 # Minimi — Web Search Chat Agent with Ambient Memory
 
-> A state-of-the-art Web Search Chat Agent built with **Brain-Vault Multi-View Episodic Memory** & **AgentBridge Governance**.
+> A state-of-the-art Web Search Chat Agent built with **Multi-View Episodic Memory System** & **AgentBridge Governance**.
 > Designed for the [Binary / Minimi Hiring Challenge](https://binary.so/YIrD8L5).
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript)](https://www.typescriptlang.org/)
@@ -69,7 +69,7 @@ npm run cli
 
 For full technical details, rationale, rejected alternatives, and future roadmap, see **[DESIGN.md](./DESIGN.md)**.
 
-- **Brain-Vault Multi-View Memory** (`src/core/memory/`):
+- **Multi-View Memory System** (`src/core/memory/`):
   - *Episodic View*: Time-indexed event log resolving relative dates (`"last Tuesday"`, `"on Monday"`).
   - *State / Fact Store*: Tri-temporal truth model `(subject, predicate, object, validFrom, validUntil, isSuperseded)`.
   - *Deterministic Entity Profile Injection*: Guarantees 100% recall for shortlisted tools and hosts.
@@ -98,12 +98,12 @@ minimi/
 ├── src/
 │   ├── core/
 │   │   ├── types.ts             # Domain & protocol types
-│   │   ├── memory/              # Brain-Vault Multi-View Memory Engine
+│   │   ├── memory/              # Multi-View Memory System Engine
 │   │   │   ├── temporal-parser.ts # Relative date parser ("last Tuesday", "on Monday")
 │   │   │   ├── episodic-store.ts  # Time-indexed conversation log
 │   │   │   ├── fact-store.ts      # Tri-temporal facts (valid_from, is_superseded)
 │   │   │   ├── entity-profiles.ts # Deterministic entity profiles
-│   │   │   ├── brain-vault.ts     # Multi-view retrieval router
+│   │   │   ├── Memory System.ts     # Multi-view retrieval router
 │   │   │   └── seed-scenarios.ts  # Pre-seeded benchmark dataset
 │   │   ├── search/              # Unified Web Search Tool ("The One Tool")
 │   │   │   ├── search-router.ts   # Provider router (Brave, Tavily, Fallback)

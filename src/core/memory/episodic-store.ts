@@ -2,44 +2,66 @@ import fs from 'fs/promises';
 import path from 'path';
 import { MemoryEntry, TemporalRange } from '../types';
 import { getDefaultStorageDir } from './storage-dir';
+import { AtomicFileWriter } from './atomic-file-writer';
 
-function isEpisodicUserMatch(entryUserId?: string, targetUserId?: string): boolean {
-  if (!targetUserId || !entryUserId) return true;
-  if (entryUserId === targetUserId) return true;
-  if (entryUserId === 'default_user' || targetUserId === 'default_user') return true;
-  if ((entryUserId === 'demo' && targetUserId === 'usr_demo') || (entryUserId === 'usr_demo' && targetUserId === 'demo')) return true;
+export function isEpisodicUserMatch(entryUserId?: string, targetUserId?: string): boolean {
+  const normEntry = entryUserId || 'default_user';
+  const normTarget = targetUserId || 'default_user';
+
+  if (normEntry === normTarget) return true;
+  // Demo aliases for demo/eval sessions
+  if ((normEntry === 'demo' && normTarget === 'usr_demo') || (normEntry === 'usr_demo' && normTarget === 'demo')) return true;
+  // Allow demo users to inherit pre-seeded default_user benchmark history
+  if ((normTarget === 'demo' || normTarget === 'usr_demo') && normEntry === 'default_user') return true;
+
   return false;
 }
 
 /**
- * Brain-Vault Episodic Store
+ * Episodic Store
  * Append-only, time-indexed conversational memory ledger with atomic local persistence.
  */
 export class EpisodicStore {
   private filePath: string;
   private entries: MemoryEntry[] = [];
   private isLoaded = false;
+  private lastMtimeMs = 0;
 
   constructor(storageDir: string = getDefaultStorageDir()) {
     this.filePath = path.join(storageDir, 'episodic.json');
   }
 
   private async ensureLoaded(): Promise<void> {
-    if (this.isLoaded) return;
     try {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+      const stat = await fs.stat(this.filePath);
+      if (this.isLoaded && stat.mtimeMs <= this.lastMtimeMs) {
+        return;
+      }
       const raw = await fs.readFile(this.filePath, 'utf-8');
       this.entries = JSON.parse(raw);
-    } catch {
-      this.entries = [];
+      this.lastMtimeMs = stat.mtimeMs;
+      this.isLoaded = true;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        this.entries = [];
+        this.lastMtimeMs = 0;
+        this.isLoaded = true;
+      } else if (!this.isLoaded) {
+        this.entries = [];
+        this.isLoaded = true;
+      }
     }
-    this.isLoaded = true;
   }
 
   private async persist(): Promise<void> {
-    const dir = path.dirname(this.filePath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(this.entries, null, 2), 'utf-8');
+    await AtomicFileWriter.write(this.filePath, this.entries);
+    try {
+      const stat = await fs.stat(this.filePath);
+      this.lastMtimeMs = stat.mtimeMs;
+    } catch {
+      this.lastMtimeMs = Date.now();
+    }
   }
 
   public async addEntry(entry: Omit<MemoryEntry, 'id' | 'createdAt'> & { createdAt?: string }): Promise<MemoryEntry> {
@@ -69,11 +91,18 @@ export class EpisodicStore {
 
   public async searchByKeyword(keyword: string, limit: number = 10, userId?: string): Promise<MemoryEntry[]> {
     await this.ensureLoaded();
-    const lower = keyword.toLowerCase();
+    const lower = keyword.toLowerCase().trim();
+    const stem = lower.length > 4 ? lower.slice(0, Math.max(3, lower.length - 2)) : lower;
+
     return this.entries
       .filter((entry) => {
-        if (!entry.content.toLowerCase().includes(lower)) return false;
-        return isEpisodicUserMatch(entry.userId, userId);
+        if (!isEpisodicUserMatch(entry.userId, userId)) return false;
+        const contentLower = entry.content.toLowerCase();
+        if (contentLower.includes(lower)) return true;
+        if (stem.length >= 3 && contentLower.includes(stem)) return true;
+        if (entry.metadata?.entities?.some(e => e.toLowerCase().includes(lower) || (stem.length >= 3 && e.toLowerCase().includes(stem)))) return true;
+        if (entry.metadata?.topics?.some(t => t.toLowerCase().includes(lower) || (stem.length >= 3 && t.toLowerCase().includes(stem)))) return true;
+        return false;
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, limit);
