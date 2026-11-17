@@ -118,13 +118,13 @@ Memory is partitioned across four specialized, concurrent stores in `.data/memor
 - **Hardened Virtual DOM Diffing**: Renders markdown output on `<div class="markdown-body">` instead of `<span>`, eliminating Vue 3 `insertBefore` DOM patch crashes.
 - **Universal Token Ingestion (`appendToken`)**: Universally parses tokens from `{ content }`, `{ token }`, `{ text }`, or raw string payloads across diverse model providers.
 - **Dynamic Response Divider**: Clean visual boundary injected conditionally between reasoning traces and synthesized answers.
-- **Evaluator Benchmark Drawer**: Built-in side drawer featuring 1-click test buttons for the exact hiring challenge queries.
+- **1-Click Quick Samples**: Pre-configured prompt cards on the chat landing screen allowing reviewers to test hiring challenge scenarios with a single click.
 
 ---
 
 ## 🧪 Testing the 3 Hiring Benchmark Queries
 
-Minimi includes a built-in **Evaluator Benchmark Drawer** in the web UI and dedicated automated test suites for the 3 hiring challenge prompts:
+Minimi includes built-in 1-click prompt samples on the chat landing screen and dedicated automated test suites for the 3 hiring challenge prompts:
 
 ### 1. CRM Shortlist Delta
 > *"On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?"*
@@ -170,7 +170,7 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ### 3. How to Review & Test in 1 Click
 1. **Pre-Seeded Demo Evaluator Account**: In the login modal, click **"Demo Evaluator"** (or use username `demo`, password `password123`) to load pre-seeded conversation baselines.
-2. **Built-in Evaluator Benchmark Drawer**: Click the **Evaluator Benchmark** button (or beaker icon) in the header to run any of the 3 hiring challenge prompts with 1 click.
+2. **1-Click Quick Prompts**: Click any of the pre-loaded sample cards on the chat landing screen (e.g. CRM Shortlist Diff, 3 November Recall, Postgres Hosting) to run immediately.
 3. **Automated Verification Harness**: Run `npm run test:eval` to verify all 12 architectural scenarios with 100% pass rate in your terminal.
 
 ---
@@ -356,7 +356,6 @@ minimi/
 │       │   ├── AIagent.vue               # Core chat interface with resilient SSE stream
 │       │   ├── Sidebar.vue               # Multi-session navigation, auth & model selector
 │       │   ├── AuthModal.vue             # Login/Registration modal with 1-click demo login
-│       │   ├── BenchmarkDrawer.vue       # 1-click hiring benchmark query runner
 │       │   ├── Scratchpad.vue            # Collapsible reasoning trace with elapsed timer
 │       │   ├── CatProgressLoader.vue     # 16x10 SVG dot-matrix animated walking cat loader
 │       │   ├── ToolPermissionMessage.vue # In-stream human authorization card

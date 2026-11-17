@@ -16,7 +16,7 @@
       @close-sidebar="isSidebarOpen = false"
     />
 
-    <!-- Main Workspace (Header, Messages, Input, Benchmark Drawer) -->
+    <!-- Main Workspace (Header, Messages, Input) -->
     <div class="flex-1 flex flex-col h-full overflow-hidden relative">
 
       <!-- Top Header Bar -->
@@ -41,24 +41,9 @@
             </h1>
           </div>
         </div>
-
-        <!-- Right Header Actions: Benchmark Suite Drawer Toggle -->
-        <div class="flex items-center gap-2">
-          <button 
-            @click="showBenchmark = !showBenchmark"
-            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border shadow-2xs"
-            :class="showBenchmark ? 'bg-[#4c4c4c] border-[#3d3d3d] text-white shadow-xs' : 'bg-white dark:bg-neutral-900 border-slate-200 dark:border-neutral-800 text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-neutral-850'"
-            title="Toggle Benchmark Suite"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-            </svg>
-            <span class="hidden sm:inline">Benchmarks</span>
-          </button>
-        </div>
       </header>
 
-      <!-- Main Messages View & Side Benchmark Drawer -->
+      <!-- Main Messages View -->
       <div class="flex-1 flex overflow-hidden relative">
         
         <!-- Messages Area -->
@@ -401,20 +386,6 @@
             </div>
           </div>
         </main>
-
-        <!-- Benchmark Drawer (Collapsible Right Panel) -->
-        <aside 
-          v-if="showBenchmark" 
-          class="w-80 border-l border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-4 overflow-y-auto styled-scrollbar z-30 transition-all flex-shrink-0"
-        >
-          <BenchmarkDrawer 
-            :autoPilot="autoPilot" 
-            @run-scenario="sendQuick" 
-            @update:auto-pilot="(val) => autoPilot = val"
-            @memory-reset="handleMemoryReset"
-          />
-        </aside>
-
       </div>
 
     </div>
@@ -437,7 +408,6 @@ import Sidebar from './Sidebar.vue';
 import AuthModal from './AuthModal.vue';
 import ToolPermissionMessage from './ToolPermissionMessage.vue';
 import Scratchpad from './Scratchpad.vue';
-import BenchmarkDrawer from './BenchmarkDrawer.vue';
 import { createStickToBottom } from '../ui/stick-to-bottom';
 import { fitContent } from '../ui/textarea';
 
@@ -505,7 +475,6 @@ const activeSessionId = ref('');
 const messages = ref([]);
 const inputPrompt = ref('');
 const isProcessing = ref(false);
-const showBenchmark = ref(false);
 const autoPilot = ref(true);
 const selectedModel = ref('gemini-2.5-flash');
 const currentAgentMessageIndex = ref(-1);
